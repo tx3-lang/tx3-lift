@@ -1,0 +1,37 @@
+[package]
+name = "tracker"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+description = "Cardano chain watcher that lifts matched transactions into a local SQLite database"
+
+[[bin]]
+name = "tracker"
+path = "src/main.rs"
+
+[dependencies]
+tx3-lift = { path = "../../crates/tx3-lift" }
+tx3-lift-cardano = { path = "../../crates/tx3-lift-cardano" }
+tx3-tir = { workspace = true }
+tx3-sdk = { workspace = true }
+pallas = { workspace = true }
+
+utxorpc = { workspace = true }
+utxorpc-spec = { workspace = true }
+tonic = { workspace = true }
+prost = { workspace = true }
+prost-types = { workspace = true }
+
+tokio = { workspace = true }
+rusqlite = { workspace = true }
+toml = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_bytes = { workspace = true }
+thiserror = { workspace = true }
+hex = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
