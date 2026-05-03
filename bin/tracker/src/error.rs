@@ -24,9 +24,6 @@ pub enum Error {
     #[error("tonic transport: {0}")]
     TonicTransport(#[from] tonic::transport::Error),
 
-    #[error("utxorpc client: {0}")]
-    UtxoRpc(#[from] utxorpc::Error),
-
     #[error("rpc: {0}")]
     Rpc(#[from] tonic::Status),
 

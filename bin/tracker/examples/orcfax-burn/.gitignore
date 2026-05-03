@@ -1,0 +1,5 @@
+tracker.db
+tracker.db-shm
+tracker.db-wal
+.tx3/
+.env

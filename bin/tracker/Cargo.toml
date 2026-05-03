@@ -19,7 +19,6 @@ tx3-tir = { workspace = true }
 tx3-sdk = { workspace = true }
 pallas = { workspace = true }
 
-utxorpc = { workspace = true }
 utxorpc-spec = { workspace = true }
 tonic = { workspace = true }
 prost = { workspace = true }

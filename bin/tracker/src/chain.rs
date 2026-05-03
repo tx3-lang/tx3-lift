@@ -1,24 +1,57 @@
 use prost::bytes::Bytes;
-use utxorpc::{CardanoQueryClient, CardanoWatchClient, ClientBuilder};
-use utxorpc_spec::utxorpc::v1alpha::watch::BlockRef;
+use tonic::codegen::InterceptedService;
+use tonic::metadata::MetadataValue;
+use tonic::service::Interceptor;
+use tonic::transport::{Channel, ClientTlsConfig};
+use utxorpc_spec::utxorpc::v1beta::watch::watch_service_client::WatchServiceClient;
+use utxorpc_spec::utxorpc::v1beta::watch::BlockRef;
 
 use crate::config::{ChainConfig, Intersect, IntersectTag};
-use crate::error::Result;
+use crate::error::{Error, Result};
+
+pub type Inner = InterceptedService<Channel, ApiKeyInterceptor>;
 
 pub struct Clients {
-    pub watch: CardanoWatchClient,
-    pub query: CardanoQueryClient,
+    pub watch: WatchServiceClient<Inner>,
+}
+
+#[derive(Clone)]
+pub struct ApiKeyInterceptor {
+    api_key: Option<MetadataValue<tonic::metadata::Ascii>>,
+}
+
+impl Interceptor for ApiKeyInterceptor {
+    fn call(
+        &mut self,
+        mut req: tonic::Request<()>,
+    ) -> std::result::Result<tonic::Request<()>, tonic::Status> {
+        if let Some(value) = &self.api_key {
+            req.metadata_mut().insert("dmtr-api-key", value.clone());
+        }
+        Ok(req)
+    }
 }
 
 pub async fn connect(cfg: &ChainConfig) -> Result<Clients> {
-    let mut builder = ClientBuilder::new().uri(&cfg.endpoint)?;
-    if let Some(api_key) = &cfg.api_key {
-        builder = builder.metadata("dmtr-api-key", api_key)?;
+    let mut endpoint = Channel::from_shared(cfg.endpoint.clone())
+        .map_err(|e| Error::Config(format!("invalid endpoint {:?}: {e}", cfg.endpoint)))?;
+    if cfg.endpoint.starts_with("https://") {
+        endpoint = endpoint.tls_config(ClientTlsConfig::new().with_native_roots())?;
     }
+    let channel = endpoint.connect().await?;
 
-    let watch: CardanoWatchClient = builder.build().await;
-    let query: CardanoQueryClient = builder.build().await;
-    Ok(Clients { watch, query })
+    let api_key = match &cfg.api_key {
+        Some(k) => Some(
+            MetadataValue::try_from(k.as_str())
+                .map_err(|e| Error::Config(format!("invalid api_key: {e}")))?,
+        ),
+        None => None,
+    };
+    let interceptor = ApiKeyInterceptor { api_key };
+
+    Ok(Clients {
+        watch: WatchServiceClient::with_interceptor(channel, interceptor),
+    })
 }
 
 pub fn intersect_block_refs(intersect: &Intersect) -> Result<Vec<BlockRef>> {
