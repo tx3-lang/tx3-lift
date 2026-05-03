@@ -3,14 +3,14 @@ use tx3_lift::specialize::decode_bech32_address;
 use utxorpc_spec::utxorpc::v1beta::cardano::{AddressPattern, AssetPattern, TxPattern};
 use utxorpc_spec::utxorpc::v1beta::watch::{any_chain_tx_pattern, AnyChainTxPattern, TxPredicate};
 
-use crate::config::WatchConfig;
+use crate::config::UpstreamFilter;
 use crate::error::{Error, Result};
 
-/// Translate the `[watch]` config block into a server-side TxPredicate.
+/// Translate the `[upstream.filter]` config block into a server-side TxPredicate.
 ///
 /// Returns `None` if no filters are configured (server streams every tx).
 /// Multiple filters are combined into a disjunctive predicate (`any_of`).
-pub fn compile(cfg: &WatchConfig) -> Result<Option<TxPredicate>> {
+pub fn compile(cfg: &UpstreamFilter) -> Result<Option<TxPredicate>> {
     if cfg.is_empty() {
         return Ok(None);
     }

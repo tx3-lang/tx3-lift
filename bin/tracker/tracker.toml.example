@@ -1,20 +1,21 @@
 # Tracker configuration example.
 # See README.md for an overview of how the daemon uses each section.
 
-[chain]
+[upstream]
 endpoint = "https://preview.utxorpc-v0.demeter.run"
 # api_key  = "dmtr_..."     # uncomment if your endpoint requires auth
 intersect = "tip"            # or { slot = 12345, hash = "abcd..." }
 
-[storage]
-database_path = "./tracker.db"
-
-# Optional server-side filter. Leaving [watch] empty (or removing it) streams
-# every transaction; configure at least one filter on a busy network.
-[watch]
+# Optional server-side filter that narrows the WatchTx stream. Leaving
+# [upstream.filter] empty (or removing it) streams every transaction;
+# configure at least one entry on a busy network.
+[upstream.filter]
 addresses = []
 # moves_policy_id = "abc123..."   # hex-encoded policy id (uncomment to enable)
 # mints_policy_id = "abc123..."
+
+[storage]
+database_path = "./tracker.db"
 
 [[sources]]
 name      = "transfer-preprod"

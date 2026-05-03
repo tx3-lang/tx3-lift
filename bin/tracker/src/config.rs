@@ -6,21 +6,26 @@ use crate::error::{Error, Result};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
-    pub chain: ChainConfig,
+    pub upstream: UpstreamConfig,
     pub storage: StorageConfig,
-    #[serde(default)]
-    pub watch: WatchConfig,
     #[serde(default)]
     pub sources: Vec<SourceConfig>,
 }
 
+/// Where the tracker pulls chain data from.
+///
+/// Holds the gRPC endpoint, optional auth, the resume point, and an optional
+/// `filter` block that narrows what the upstream forwards to us (server-side
+/// pre-filter via `WatchTx`'s `TxPredicate`).
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ChainConfig {
+pub struct UpstreamConfig {
     pub endpoint: String,
     #[serde(default)]
     pub api_key: Option<String>,
     #[serde(default)]
     pub intersect: Intersect,
+    #[serde(default)]
+    pub filter: UpstreamFilter,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -47,8 +52,10 @@ pub struct StorageConfig {
     pub database_path: PathBuf,
 }
 
+/// Server-side pre-filter applied to the WatchTx stream. Empty = forward
+/// every tx; populated = forward only txs that match at least one alternative.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
-pub struct WatchConfig {
+pub struct UpstreamFilter {
     /// Match txs that consume or produce a UTxO at any of these bech32 addresses.
     #[serde(default)]
     pub addresses: Vec<String>,
@@ -60,7 +67,7 @@ pub struct WatchConfig {
     pub mints_policy_id: Option<String>,
 }
 
-impl WatchConfig {
+impl UpstreamFilter {
     pub fn is_empty(&self) -> bool {
         self.addresses.is_empty()
             && self.moves_policy_id.is_none()
