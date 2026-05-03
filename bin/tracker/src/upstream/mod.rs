@@ -1,6 +1,11 @@
 //! Connect to the configured upstream utxorpc endpoint and yield a ready
 //! `WatchService` client. TLS is gated on `https://` so plaintext
 //! `http://localhost:…` connects without extra config.
+//!
+//! [`predicate`] turns the `[upstream.filter]` block into the server-side
+//! `WatchTx` predicate that narrows what gets forwarded to us.
+
+pub mod predicate;
 
 use prost::bytes::Bytes;
 use tonic::codegen::InterceptedService;

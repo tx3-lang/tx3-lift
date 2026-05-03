@@ -1,6 +1,5 @@
 mod config;
 mod error;
-mod predicate;
 mod process;
 mod specialization;
 mod store;
@@ -58,7 +57,7 @@ async fn run() -> Result<()> {
         None => upstream::intersect_block_refs(&cfg.upstream.intersect)?,
     };
 
-    let predicate = predicate::compile(&cfg.upstream.filter)?;
+    let predicate = upstream::predicate::compile(&cfg.upstream.filter)?;
     let mut watch = upstream::connect(&cfg.upstream).await?;
     let lifter = CardanoLifter::new();
 
