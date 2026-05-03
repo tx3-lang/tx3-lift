@@ -1,3 +1,7 @@
+//! Connect to the configured upstream utxorpc endpoint and yield a ready
+//! `WatchService` client. TLS is gated on `https://` so plaintext
+//! `http://localhost:…` connects without extra config.
+
 use prost::bytes::Bytes;
 use tonic::codegen::InterceptedService;
 use tonic::metadata::MetadataValue;
@@ -6,14 +10,10 @@ use tonic::transport::{Channel, ClientTlsConfig};
 use utxorpc_spec::utxorpc::v1beta::watch::watch_service_client::WatchServiceClient;
 use utxorpc_spec::utxorpc::v1beta::watch::BlockRef;
 
-use crate::config::{ChainConfig, Intersect, IntersectTag};
+use crate::config::{Intersect, IntersectTag, UpstreamConfig};
 use crate::error::{Error, Result};
 
-pub type Inner = InterceptedService<Channel, ApiKeyInterceptor>;
-
-pub struct Clients {
-    pub watch: WatchServiceClient<Inner>,
-}
+pub type Channeled = InterceptedService<Channel, ApiKeyInterceptor>;
 
 #[derive(Clone)]
 pub struct ApiKeyInterceptor {
@@ -32,7 +32,7 @@ impl Interceptor for ApiKeyInterceptor {
     }
 }
 
-pub async fn connect(cfg: &ChainConfig) -> Result<Clients> {
+pub async fn connect(cfg: &UpstreamConfig) -> Result<WatchServiceClient<Channeled>> {
     let mut endpoint = Channel::from_shared(cfg.endpoint.clone())
         .map_err(|e| Error::Config(format!("invalid endpoint {:?}: {e}", cfg.endpoint)))?;
     if cfg.endpoint.starts_with("https://") {
@@ -49,9 +49,7 @@ pub async fn connect(cfg: &ChainConfig) -> Result<Clients> {
     };
     let interceptor = ApiKeyInterceptor { api_key };
 
-    Ok(Clients {
-        watch: WatchServiceClient::with_interceptor(channel, interceptor),
-    })
+    Ok(WatchServiceClient::with_interceptor(channel, interceptor))
 }
 
 pub fn intersect_block_refs(intersect: &Intersect) -> Result<Vec<BlockRef>> {

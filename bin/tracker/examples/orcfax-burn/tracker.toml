@@ -2,7 +2,7 @@
 # mainnet and watch the tracker capture it. See README.md for the full
 # walk-through.
 
-[chain]
+[upstream]
 endpoint = "http://localhost:50051"
 # Local utxorpc server speaking v1beta — no Demeter key needed. The runner
 # script (./run.sh) overrides this from `DMTR_ENDPOINT` if you want to
@@ -15,14 +15,14 @@ endpoint = "http://localhost:50051"
 # intersect (14 slots later).
 intersect = { slot = 186188536, hash = "26993814bd8770da765f482fafe9d9e47d206b0ff4b42cd6e68d5910ba298ae6" }
 
-[storage]
-database_path = "./tracker.db"
-
 # Server-side pre-filter: only stream txs that mint or burn the Orcfax
 # policy. The protobuf field is named `mints_asset` but per the spec it
 # matches both directions (positive mint and negative burn).
-[watch]
+[upstream.filter]
 mints_policy_id = "193ee65211bb3b4e0ea5f751f415269355a650e2e3706f625cdf1a4b"
+
+[storage]
+database_path = "./tracker.db"
 
 [[sources]]
 name     = "orcfax-burn-mainnet"

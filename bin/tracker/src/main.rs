@@ -1,10 +1,10 @@
-mod chain;
 mod config;
 mod error;
 mod predicate;
 mod process;
 mod specialization;
 mod store;
+mod upstream;
 
 use std::path::PathBuf;
 
@@ -55,11 +55,11 @@ async fn run() -> Result<()> {
                 height: 0,
             }]
         }
-        None => chain::intersect_block_refs(&cfg.chain.intersect)?,
+        None => upstream::intersect_block_refs(&cfg.upstream.intersect)?,
     };
 
-    let predicate = predicate::compile(&cfg.watch)?;
-    let mut clients = chain::connect(&cfg.chain).await?;
+    let predicate = predicate::compile(&cfg.upstream.filter)?;
+    let mut watch = upstream::connect(&cfg.upstream).await?;
     let lifter = CardanoLifter::new();
 
     let request = WatchTxRequest {
@@ -68,8 +68,8 @@ async fn run() -> Result<()> {
         intersect,
     };
 
-    info!(endpoint = %cfg.chain.endpoint, "subscribing to WatchTx");
-    let mut stream = clients.watch.watch_tx(request).await?.into_inner();
+    info!(endpoint = %cfg.upstream.endpoint, "subscribing to WatchTx");
+    let mut stream = watch.watch_tx(request).await?.into_inner();
 
     let mut shutdown = signal_listener();
 
