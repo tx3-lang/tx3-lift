@@ -1,7 +1,7 @@
 use prost::bytes::Bytes;
 use tx3_lift::specialize::decode_bech32_address;
-use utxorpc_spec::utxorpc::v1alpha::cardano::{AddressPattern, AssetPattern, TxPattern};
-use utxorpc_spec::utxorpc::v1alpha::watch::{any_chain_tx_pattern, AnyChainTxPattern, TxPredicate};
+use utxorpc_spec::utxorpc::v1beta::cardano::{AddressPattern, AssetPattern, TxPattern};
+use utxorpc_spec::utxorpc::v1beta::watch::{any_chain_tx_pattern, AnyChainTxPattern, TxPredicate};
 
 use crate::config::WatchConfig;
 use crate::error::{Error, Result};

@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 use tx3_lift_cardano::CardanoLifter;
-use utxorpc_spec::utxorpc::v1alpha::watch::{watch_tx_response, WatchTxRequest};
+use utxorpc_spec::utxorpc::v1beta::watch::{watch_tx_response, WatchTxRequest};
 
 use crate::error::Result;
 
@@ -49,7 +49,7 @@ async fn run() -> Result<()> {
     let intersect = match store.cursor().await? {
         Some(point) => {
             info!(slot = point.slot, "resuming from stored cursor");
-            vec![utxorpc_spec::utxorpc::v1alpha::watch::BlockRef {
+            vec![utxorpc_spec::utxorpc::v1beta::watch::BlockRef {
                 slot: point.slot,
                 hash: prost::bytes::Bytes::copy_from_slice(&point.hash),
                 height: 0,
@@ -69,12 +69,7 @@ async fn run() -> Result<()> {
     };
 
     info!(endpoint = %cfg.chain.endpoint, "subscribing to WatchTx");
-    let mut stream = clients
-        .watch
-        .inner
-        .watch_tx(request)
-        .await?
-        .into_inner();
+    let mut stream = clients.watch.watch_tx(request).await?.into_inner();
 
     let mut shutdown = signal_listener();
 
@@ -95,10 +90,14 @@ async fn run() -> Result<()> {
                 };
                 match response.action {
                     Some(watch_tx_response::Action::Apply(any_tx)) => {
-                        process::apply_tx(any_tx, &sources, &lifter, &mut clients.query, &store).await?;
+                        process::apply_tx(any_tx, &sources, &lifter, &store).await?;
                     }
                     Some(watch_tx_response::Action::Undo(any_tx)) => {
                         process::undo_tx(any_tx, &store).await?;
+                    }
+                    Some(watch_tx_response::Action::Idle(b)) => {
+                        tracing::debug!(slot = b.slot, "idle");
+                        continue;
                     }
                     None => continue,
                 }

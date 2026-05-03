@@ -1,33 +1,30 @@
 use std::collections::BTreeMap;
 
-use pallas::ledger::traverse::{Era, MultiEraBlock, MultiEraTx};
-use prost::bytes::Bytes;
+use pallas::ledger::traverse::{Era, MultiEraBlock};
 use serde_bytes::ByteBuf;
 use tracing::{debug, info, warn};
 use tx3_lift::lift::Lifter;
 use tx3_lift::match_::Matcher;
 use tx3_lift::payload::UtxoRef;
 use tx3_lift_cardano::{CardanoLifter, CardanoPayload, ResolvedOutput};
-use utxorpc::CardanoQueryClient;
-use utxorpc_spec::utxorpc::v1alpha::cardano as u5c_cardano;
-use utxorpc_spec::utxorpc::v1alpha::query::TxoRef;
-use utxorpc_spec::utxorpc::v1alpha::watch::AnyChainTx;
+use utxorpc_spec::utxorpc::v1beta::cardano as u5c_cardano;
+use utxorpc_spec::utxorpc::v1beta::watch::AnyChainTx;
 
 use crate::error::{Error, Result};
 use crate::sources::CompiledSource;
 use crate::store::{ChainPoint, OwnedMatchRow, Store};
 
 /// Handle a streamed Apply event: parse the containing block, locate the tx,
-/// resolve its inputs, run match+lift across every configured source, and persist.
+/// resolve its inputs from `as_output.original_cbor` carried in the WatchTx
+/// envelope, run match+lift across every configured source, and persist.
 pub async fn apply_tx(
     any_tx: AnyChainTx,
     sources: &[CompiledSource],
     lifter: &CardanoLifter,
-    query: &mut CardanoQueryClient,
     store: &Store,
 ) -> Result<()> {
     let Some(cardano_tx) = any_tx.chain.and_then(|c| match c {
-        utxorpc_spec::utxorpc::v1alpha::watch::any_chain_tx::Chain::Cardano(t) => Some(t),
+        utxorpc_spec::utxorpc::v1beta::watch::any_chain_tx::Chain::Cardano(t) => Some(t),
     }) else {
         warn!("apply event missing cardano tx");
         return Ok(());
@@ -62,7 +59,15 @@ pub async fn apply_tx(
         .find(|t| t.hash().as_slice() == target_hash.as_slice())
         .ok_or_else(|| Error::TxNotInBlock(hex::encode(target_hash)))?;
 
-    let resolved = resolve_inputs(target_tx, containing_era, query).await?;
+    let resolved = collect_resolved_inputs(&cardano_tx, containing_era);
+    debug!(
+        tx = %hex::encode(target_hash),
+        slot = block_slot,
+        tx_inputs = target_tx.inputs().len(),
+        ref_inputs = target_tx.reference_inputs().len(),
+        resolved_inputs = resolved.len(),
+        "collected resolved inputs from WatchTx envelope"
+    );
     let payload = CardanoPayload::from_cbor(target_tx.encode())?.with_resolved_inputs(resolved);
 
     let block_hash_bytes: [u8; 32] = *block_hash;
@@ -89,7 +94,7 @@ pub async fn apply_tx(
 
 pub async fn undo_tx(any_tx: AnyChainTx, store: &Store) -> Result<()> {
     let cardano_tx = match any_tx.chain {
-        Some(utxorpc_spec::utxorpc::v1alpha::watch::any_chain_tx::Chain::Cardano(t)) => t,
+        Some(utxorpc_spec::utxorpc::v1beta::watch::any_chain_tx::Chain::Cardano(t)) => t,
         None => return Ok(()),
     };
 
@@ -155,52 +160,36 @@ fn run_sources(
     Ok(out)
 }
 
-async fn resolve_inputs(
-    tx: &MultiEraTx<'_>,
+/// Walk every input + reference_input on the WatchTx-delivered cardano Tx and
+/// pull the resolved-output CBOR from `as_output.original_cbor`. This is what
+/// the v1beta spec carries for free, removing the need for a follow-up
+/// ReadUtxos round-trip (which can't return spent inputs anyway).
+fn collect_resolved_inputs(
+    tx: &u5c_cardano::Tx,
     era: Era,
-    query: &mut CardanoQueryClient,
-) -> Result<BTreeMap<UtxoRef, ResolvedOutput>> {
-    let refs: Vec<TxoRef> = tx
-        .inputs()
-        .iter()
-        .chain(tx.reference_inputs().iter())
-        .map(|i| {
-            let oref = i.output_ref();
-            TxoRef {
-                hash: Bytes::copy_from_slice(oref.hash().as_slice()),
-                index: oref.index() as u32,
-            }
-        })
-        .collect();
-
-    if refs.is_empty() {
-        return Ok(BTreeMap::new());
-    }
-
-    let utxos = query.read_utxos(refs).await?;
-
+) -> BTreeMap<UtxoRef, ResolvedOutput> {
     let mut out = BTreeMap::new();
-    for utxo in utxos {
-        let txo_ref = match utxo.txo_ref {
-            Some(r) => r,
-            None => continue,
+    let all_inputs = tx.inputs.iter().chain(tx.reference_inputs.iter());
+    for input in all_inputs {
+        let Some(as_output) = &input.as_output else {
+            continue;
         };
-        let key: UtxoRef = (ByteBuf::from(txo_ref.hash.to_vec()), txo_ref.index);
-        if utxo.native.is_empty() {
+        let Some(cbor) = &as_output.original_cbor else {
             warn!(
-                "utxorpc returned empty native_bytes for {}#{}; skipping",
-                hex::encode(&txo_ref.hash),
-                txo_ref.index
+                "as_output.original_cbor missing for {}#{}; matcher will skip address checks",
+                hex::encode(&input.tx_hash),
+                input.output_index
             );
             continue;
-        }
+        };
+        let key: UtxoRef = (ByteBuf::from(input.tx_hash.to_vec()), input.output_index);
         out.insert(
             key,
             ResolvedOutput {
                 era,
-                cbor: utxo.native.to_vec(),
+                cbor: cbor.to_vec(),
             },
         );
     }
-    Ok(out)
+    out
 }
