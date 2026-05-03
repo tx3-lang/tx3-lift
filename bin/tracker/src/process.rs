@@ -11,15 +11,15 @@ use utxorpc_spec::utxorpc::v1beta::cardano as u5c_cardano;
 use utxorpc_spec::utxorpc::v1beta::watch::AnyChainTx;
 
 use crate::error::{Error, Result};
-use crate::sources::CompiledSource;
+use crate::specialization::SpecializedTii;
 use crate::store::{ChainPoint, OwnedMatchRow, Store};
 
 /// Handle a streamed Apply event: parse the containing block, locate the tx,
 /// resolve its inputs from `as_output.original_cbor` carried in the WatchTx
-/// envelope, run match+lift across every configured source, and persist.
+/// envelope, run match+lift across every specialized TII, and persist.
 pub async fn apply_tx(
     any_tx: AnyChainTx,
-    sources: &[CompiledSource],
+    specialized: &[SpecializedTii],
     lifter: &CardanoLifter,
     store: &Store,
 ) -> Result<()> {
@@ -76,7 +76,7 @@ pub async fn apply_tx(
         hash: block_hash_bytes,
     };
 
-    let rows = run_sources(sources, lifter, &cardano_tx, &payload, block_slot, &block_hash_bytes)?;
+    let rows = run_specializations(specialized, lifter, &cardano_tx, &payload, block_slot, &block_hash_bytes)?;
     if !rows.is_empty() {
         info!(
             tx = %hex::encode(target_hash),
@@ -117,8 +117,8 @@ pub async fn undo_tx(any_tx: AnyChainTx, store: &Store) -> Result<()> {
     Ok(())
 }
 
-fn run_sources(
-    sources: &[CompiledSource],
+fn run_specializations(
+    specialized: &[SpecializedTii],
     lifter: &CardanoLifter,
     _cardano_tx: &u5c_cardano::Tx,
     payload: &CardanoPayload,
@@ -127,20 +127,20 @@ fn run_sources(
 ) -> Result<Vec<OwnedMatchRow>> {
     let summary = lifter.matcher.summarize(payload)?;
     let mut out = Vec::new();
-    for source in sources {
-        for (tx_name, (specialized, fp)) in &source.txs {
+    for spec in specialized {
+        for (tx_name, (tir, fp)) in &spec.txs {
             if !fp.matches(&summary) {
                 continue;
             }
-            let assignment = match lifter.match_tx(specialized, payload)? {
+            let assignment = match lifter.match_tx(tir, payload)? {
                 Some(a) => a,
                 None => continue,
             };
             let lifted = lifter.lift(
-                &source.tii,
+                &spec.tii,
                 tx_name,
-                &source.profile_name,
-                specialized,
+                &spec.profile_name,
+                tir,
                 payload,
                 &assignment,
             )?;
@@ -149,7 +149,7 @@ fn run_sources(
                 tx_hash: lifted.tx_id.to_vec(),
                 block_slot,
                 block_hash: block_hash.to_vec(),
-                source_name: source.name.clone(),
+                source_name: spec.name.clone(),
                 protocol_name: lifted.protocol_name.clone(),
                 tx_name: lifted.tx_name.clone(),
                 profile_name: lifted.profile_name.clone(),

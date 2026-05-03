@@ -3,7 +3,7 @@ mod config;
 mod error;
 mod predicate;
 mod process;
-mod sources;
+mod specialization;
 mod store;
 
 use std::path::PathBuf;
@@ -39,11 +39,11 @@ async fn run() -> Result<()> {
     let cfg = config::load(&config_path)?;
 
     let store = store::Store::open(&cfg.storage.database_path).await?;
-    let sources = sources::compile(&cfg.sources)?;
+    let specialized = specialization::specialize_all(&cfg.sources)?;
     info!(
-        sources = sources.len(),
-        txs = sources.iter().map(|s| s.txs.len()).sum::<usize>(),
-        "compiled sources"
+        sources = specialized.len(),
+        txs = specialized.iter().map(|s| s.txs.len()).sum::<usize>(),
+        "specialized sources"
     );
 
     let intersect = match store.cursor().await? {
@@ -90,7 +90,7 @@ async fn run() -> Result<()> {
                 };
                 match response.action {
                     Some(watch_tx_response::Action::Apply(any_tx)) => {
-                        process::apply_tx(any_tx, &sources, &lifter, &store).await?;
+                        process::apply_tx(any_tx, &specialized, &lifter, &store).await?;
                     }
                     Some(watch_tx_response::Action::Undo(any_tx)) => {
                         process::undo_tx(any_tx, &store).await?;
