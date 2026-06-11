@@ -48,7 +48,7 @@ fn count_eval_params(expr: &Expression) -> usize {
             .iter()
             .map(|(k, v)| count_eval_params(k) + count_eval_params(v))
             .sum(),
-        Expression::Tuple(boxed) => count_eval_params(&boxed.0) + count_eval_params(&boxed.1),
+        Expression::Tuple(elements) => elements.iter().map(count_eval_params).sum(),
         Expression::Struct(s) => s.fields.iter().map(count_eval_params).sum(),
         Expression::Assets(assets) => assets
             .iter()
