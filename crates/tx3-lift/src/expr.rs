@@ -25,7 +25,7 @@ pub fn classify(expr: &Expression) -> ExprKind {
                 .iter()
                 .flat_map(|(k, v)| [classify(k), classify(v)].into_iter()),
         ),
-        Expression::Tuple(boxed) => combine([classify(&boxed.0), classify(&boxed.1)].into_iter()),
+        Expression::Tuple(elements) => combine(elements.iter().map(classify)),
         Expression::Struct(s) => combine(s.fields.iter().map(classify)),
         Expression::Assets(assets) => combine(assets.iter().flat_map(|a| {
             [
