@@ -74,7 +74,7 @@ fn count_in_builtin(op: &tx3_tir::model::v1beta0::BuiltInOp) -> usize {
     use tx3_tir::model::v1beta0::BuiltInOp::*;
     match op {
         NoOp(x) | Negate(x) => count_eval_params(x),
-        Add(a, b) | Sub(a, b) | Mul(a, b) | Concat(a, b) | Property(a, b) => {
+        Add(a, b) | Sub(a, b) | Mul(a, b) | Div(a, b) | Concat(a, b) | Property(a, b) => {
             count_eval_params(a) + count_eval_params(b)
         }
     }
