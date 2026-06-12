@@ -165,7 +165,7 @@ fn run_specializations(
                 Some(a) => a,
                 None => continue,
             };
-            let score = (anchor_hits + fp.information_score()) as u32;
+            let score = u32::try_from(anchor_hits + fp.information_score()).unwrap_or(u32::MAX);
             candidates.push(Candidate {
                 source_name: &spec.name,
                 tx_name,
@@ -250,8 +250,8 @@ fn select_matches<T>(candidates: Vec<Candidate<'_, T>>, mode: MatchMode) -> Vec<
     for cand in candidates {
         // The new candidate replaces the incumbent when it scores strictly
         // higher, or ties on score with an alphabetically-earlier tx_name.
-        // (Higher score wins; lower tx_name wins on a tie — opposite
-        // directions, so this can't collapse to a single tuple compare.)
+        // (Kept as an explicit boolean for readability over a
+        // `(Reverse(score), tx_name)` tuple compare.)
         let replace = match best_per_source.get(cand.source_name) {
             None => true,
             Some(existing) => {
