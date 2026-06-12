@@ -7,7 +7,7 @@ mod error;
 #[path = "../src/store.rs"]
 mod store;
 
-use store::{ChainPoint, OwnedMatchRow, Store};
+use store::{ChainPoint, OwnedMatchRow, Store, MIGRATIONS};
 
 fn row(tx_hash: &[u8], source: &str, slot: u64) -> OwnedMatchRow {
     OwnedMatchRow {
@@ -44,14 +44,14 @@ async fn score_and_match_rank_round_trip() {
     let tx_hash_clone = tx_hash.clone();
 
     // Use two DIFFERENT non-default values so swapped columns would be caught.
-    let expected_score: i64 = 42;
-    let expected_rank: i64 = 3;
+    let expected_score: u32 = 42;
+    let expected_rank: u32 = 3;
 
     {
         let store = Store::open(&db_path).await.expect("open store");
         let mut r = row(&tx_hash, "src-score", 50);
-        r.score = expected_score as u32;
-        r.match_rank = expected_rank as u32;
+        r.score = expected_score;
+        r.match_rank = expected_rank;
 
         let inserted = store
             .apply_block(point(50), vec![r])
@@ -71,11 +71,11 @@ async fn score_and_match_rank_round_trip() {
         .expect("row must exist");
 
     assert_eq!(
-        got_score, expected_score,
+        got_score, expected_score as i64,
         "score read back from DB must match what was inserted"
     );
     assert_eq!(
-        got_rank, expected_rank,
+        got_rank, expected_rank as i64,
         "match_rank read back from DB must match what was inserted"
     );
 }
@@ -105,6 +105,7 @@ async fn upgrade_from_001_only_db_applies_migration_002() {
             .expect("execute 001 sql");
 
         // Record it in _schema_versions exactly as run_migrations would.
+        // NOTE: this DDL must match the _schema_versions DDL in run_migrations (store.rs).
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS _schema_versions (
                 name TEXT PRIMARY KEY,
@@ -112,9 +113,10 @@ async fn upgrade_from_001_only_db_applies_migration_002() {
             )",
         )
         .expect("create _schema_versions");
+        // Use MIGRATIONS[0].0 so this stays in sync with the canonical name.
         conn.execute(
-            "INSERT INTO _schema_versions (name, applied_at) VALUES ('001_initial', 0)",
-            [],
+            "INSERT INTO _schema_versions (name, applied_at) VALUES (?, 0)",
+            rusqlite::params![MIGRATIONS[0].0],
         )
         .expect("record 001 in _schema_versions");
 

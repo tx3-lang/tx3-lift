@@ -7,7 +7,7 @@ use tokio::sync::Mutex;
 
 use crate::error::Result;
 
-const MIGRATIONS: &[(&str, &str)] = &[
+pub(crate) const MIGRATIONS: &[(&str, &str)] = &[
     ("001_initial", include_str!("../migrations/001_initial.sql")),
     (
         "002_score_rank",
@@ -226,11 +226,18 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             continue;
         }
 
-        conn.execute_batch(sql)?;
-        conn.execute(
+        // Wrap the migration SQL and the bookkeeping INSERT in a single
+        // transaction so a crash between them cannot leave the migration
+        // applied but unrecorded (which would cause the non-idempotent
+        // ALTER TABLE in 002 to fail with "duplicate column name" on the
+        // next open).
+        let tx = conn.unchecked_transaction()?;
+        tx.execute_batch(sql)?;
+        tx.execute(
             "INSERT INTO _schema_versions (name, applied_at) VALUES (?, ?)",
             params![name, unix_secs()],
         )?;
+        tx.commit()?;
     }
     Ok(())
 }
