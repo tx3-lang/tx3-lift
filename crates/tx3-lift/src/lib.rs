@@ -16,6 +16,7 @@
 //! mandatory: an unspecialized TIR is mostly `EvalParam` placeholders and would produce
 //! a near-empty fingerprint.
 
+pub mod anchors;
 pub mod error;
 pub mod expr;
 pub mod fingerprint;
@@ -24,6 +25,7 @@ pub mod match_;
 pub mod payload;
 pub mod specialize;
 
+pub use anchors::ProtocolAnchors;
 pub use error::Error;
 pub use fingerprint::{fingerprint_for, fingerprints_for_all, Fingerprint};
 pub use lift::{
