@@ -12,6 +12,9 @@ description = "Cardano chain watcher that lifts matched transactions into a loca
 name = "tracker"
 path = "src/main.rs"
 
+[dev-dependencies]
+tempfile = "3"
+
 [dependencies]
 tx3-lift = { path = "../../crates/tx3-lift" }
 tx3-lift-cardano = { path = "../../crates/tx3-lift-cardano" }

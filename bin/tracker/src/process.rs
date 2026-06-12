@@ -161,6 +161,8 @@ fn run_specializations(
                 tx_name: lifted.tx_name.clone(),
                 profile_name: lifted.profile_name.clone(),
                 lifted_json,
+                score: 0,
+                match_rank: 1,
             });
         }
     }

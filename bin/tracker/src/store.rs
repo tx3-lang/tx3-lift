@@ -7,8 +7,13 @@ use tokio::sync::Mutex;
 
 use crate::error::Result;
 
-const MIGRATIONS: &[(&str, &str)] =
-    &[("001_initial", include_str!("../migrations/001_initial.sql"))];
+const MIGRATIONS: &[(&str, &str)] = &[
+    ("001_initial", include_str!("../migrations/001_initial.sql")),
+    (
+        "002_score_rank",
+        include_str!("../migrations/002_score_rank.sql"),
+    ),
+];
 
 #[derive(Clone, Debug)]
 pub struct Store {
@@ -31,6 +36,8 @@ pub struct MatchRow<'a> {
     pub tx_name: &'a str,
     pub profile_name: &'a str,
     pub lifted_json: &'a str,
+    pub score: u32,
+    pub match_rank: u32,
 }
 
 impl Store {
@@ -106,8 +113,8 @@ impl Store {
                 let mut stmt = tx.prepare(
                     "INSERT OR IGNORE INTO matches \
                      (tx_hash, block_slot, block_hash, source_name, protocol_name, \
-                      tx_name, profile_name, lifted, matched_at) \
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                      tx_name, profile_name, lifted, matched_at, score, match_rank) \
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 )?;
                 for row in &rows {
                     let n = stmt.execute(params![
@@ -120,6 +127,8 @@ impl Store {
                         row.profile_name,
                         row.lifted_json,
                         now,
+                        row.score as i64,
+                        row.match_rank as i64,
                     ])?;
                     inserted += n;
                 }
@@ -174,6 +183,8 @@ pub struct OwnedMatchRow {
     pub tx_name: String,
     pub profile_name: String,
     pub lifted_json: String,
+    pub score: u32,
+    pub match_rank: u32,
 }
 
 impl<'a> From<MatchRow<'a>> for OwnedMatchRow {
@@ -187,6 +198,8 @@ impl<'a> From<MatchRow<'a>> for OwnedMatchRow {
             tx_name: r.tx_name.to_string(),
             profile_name: r.profile_name.to_string(),
             lifted_json: r.lifted_json.to_string(),
+            score: r.score,
+            match_rank: r.match_rank,
         }
     }
 }
