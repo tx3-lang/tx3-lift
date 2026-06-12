@@ -11,8 +11,10 @@
 
 use std::collections::BTreeMap;
 
+use tracing::warn;
 use tx3_lift::fingerprint::{extract, Fingerprint};
 use tx3_lift::specialize::{args_from_profile, decode_tir, lookup_profile, lookup_tx};
+use tx3_lift::ProtocolAnchors;
 use tx3_sdk::tii::spec::TiiFile;
 use tx3_tir::model::v1beta0::Tx;
 use tx3_tir::reduce::{apply_args, ArgMap};
@@ -27,14 +29,35 @@ pub struct SpecializedTii {
     pub name: String,
     pub tii: TiiFile,
     pub profile_name: String,
+    /// Protocol-level anchors derived from the profile (addresses, UTxO refs,
+    /// policy ids). Always non-empty: sources with zero anchors are excluded
+    /// from the active list by [`specialize_all`].
+    pub anchors: ProtocolAnchors,
     /// Per-tx-name pre-specialized TIR + fingerprint.
     pub txs: BTreeMap<String, (Tx, Fingerprint)>,
 }
 
 /// Specialize every configured `[[sources]]` entry. Returns one
-/// `SpecializedTii` per source, in the same order.
+/// `SpecializedTii` per source in the same order as `sources`, **excluding**
+/// sources whose profile yields zero anchors (no known party addresses,
+/// script-reference UTxOs, or policy ids). A warning is emitted for each
+/// excluded source so the omission is visible in logs.
 pub fn specialize_all(sources: &[SourceConfig]) -> Result<Vec<SpecializedTii>> {
-    sources.iter().map(specialize_one).collect()
+    let mut out = Vec::with_capacity(sources.len());
+    for src in sources {
+        let specialized = specialize_one(src)?;
+        if specialized.anchors.is_empty() {
+            warn!(
+                source = %src.name,
+                profile = %src.profile,
+                "profile has no parties or recognizable environment anchors; \
+                 matching disabled for this source"
+            );
+            continue;
+        }
+        out.push(specialized);
+    }
+    Ok(out)
 }
 
 fn specialize_one(src: &SourceConfig) -> Result<SpecializedTii> {
@@ -42,6 +65,7 @@ fn specialize_one(src: &SourceConfig) -> Result<SpecializedTii> {
     let tii: TiiFile = serde_json::from_str(&raw)?;
 
     let profile = lookup_profile(&tii, &src.profile)?;
+    let anchors = ProtocolAnchors::from_profile(profile)?;
     let args: ArgMap = args_from_profile(profile, &ArgMap::new())?;
 
     let mut txs = BTreeMap::new();
@@ -64,6 +88,7 @@ fn specialize_one(src: &SourceConfig) -> Result<SpecializedTii> {
         name: src.name.clone(),
         tii,
         profile_name: src.profile.clone(),
+        anchors,
         txs,
     })
 }
