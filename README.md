@@ -26,8 +26,8 @@ The TIR inside a TII is environment-agnostic — most addresses, policies, and c
 
 When the tracker writes a row to its `matches` table it includes two disambiguation columns:
 
-- **`score`** — the fingerprint's `information_score()` for the winning `(source, tx_name)` combination: sum of required addresses, policies, and signer hashes. Higher means more specific.
-- **`match_rank`** — dense rank within the transaction, ordered by score descending (rank 1 = highest score). Multiple rows per tx are possible when two sources tie.
+- **`score`** — anchor hits plus the fingerprint's `information_score()` for the winning `(source, tx_name)` combination. Anchor hits count the distinct profile anchors (party addresses, script-ref UTxOs, policy ids) the tx intersects; `information_score()` adds the fingerprint's required-set entries (addresses, refs, policies, signers, metadata labels). Higher means more specific — today anchors dominate, since most fingerprints are still empty.
+- **`match_rank`** — dense rank within the transaction, ordered by score descending (rank 1 = highest score; equal scores share a rank). Under the default mode every matching source produces a row, so multiple rows per tx are expected whenever more than one source matches.
 
 The `[matching]` block in `tracker.toml` controls which candidates are retained:
 
