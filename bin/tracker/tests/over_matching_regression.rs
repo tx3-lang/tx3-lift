@@ -41,7 +41,8 @@ fn source(name: &str, profile: &str) -> SourceConfig {
 /// property is that **none** of the addresses or input refs belong to any of
 /// the five configured protocols.
 ///
-/// From the issue doc:
+/// Prefixes from the issue doc (truncated there with `…`; padded to full
+/// length below with filler bytes — the padding provably matches no anchor):
 ///   input[0]  0x31 c727443d77df6cff 95dca383994f4c30 24d03ff56b02ecc2 2b0f3f65 … (script-like)
 ///   input[1]  0x01 5090306a888fde7e 4500aefd4ccd9605 5043de31e56ef28d c27dd4d8 … (payment)
 ///   output[*] 0x01 5090306a888fde7e 4500aefd4ccd9605 5043de31e56ef28d c27dd4d8 … (payment)
