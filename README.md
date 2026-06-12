@@ -12,6 +12,8 @@ Three operations against a TII transaction, scoped to a profile:
 2. **Match** — decide whether a payload satisfies the full TIR. Runs the fingerprint as a pre-filter, then a precise structural match.
 3. **Lift** — given a matching payload, return a [`Lifted`](crates/tx3-lift/src/lift.rs) view: party annotations, input/output annotations with addresses and assets, mint/burn annotations, signers, metadata, typed datums.
 
+The tracker additionally gates matching on **profile-derived anchors** extracted from each source's TII profile before the matcher runs: party bech32 addresses → raw address bytes, `txid#index`-shaped environment values → UTxO refs, 56-hex-char environment values → policy ids. A transaction must contain at least one of those anchors (in its inputs, outputs, mints, burns, or value-bearing outputs) before the structural match is attempted. Sources whose profile yields zero anchors (no parties, no qualifying environment values) are disabled at startup with a warning — they would match every transaction indiscriminately.
+
 The operations are exposed as standalone functions and as the `Matcher` / `Lifter` traits, so chain backends other than Cardano can plug in.
 
 ## Why profile-specialization is mandatory
@@ -19,6 +21,21 @@ The operations are exposed as standalone functions and as the `Matcher` / `Lifte
 The TIR inside a TII is environment-agnostic — most addresses, policies, and constants are `EvalParam` placeholders, not literals. Extracting a fingerprint from raw TIR yields almost nothing because nothing is constant.
 
 `tx3-lift` therefore *specializes* the TIR per profile before fingerprinting: it reads `Profile.environment` (env values) plus `Profile.parties` (bech32 addresses), builds an `ArgMap`, and runs `tx3_tir::reduce::apply_args` to fold those values in. The walker then sees concrete addresses and policies. A given TII transaction yields **one fingerprint per profile** (mainnet ≠ preview ≠ preprod). True runtime parameters (e.g. `quantity` supplied at invoke time) stay unresolved and are correctly excluded from the fingerprint.
+
+## Tracker match output
+
+When the tracker writes a row to its `matches` table it includes two disambiguation columns:
+
+- **`score`** — the fingerprint's `information_score()` for the winning `(source, tx_name)` combination: sum of required addresses, policies, and signer hashes. Higher means more specific.
+- **`match_rank`** — dense rank within the transaction, ordered by score descending (rank 1 = highest score). Multiple rows per tx are possible when two sources tie.
+
+The `[matching]` block in `tracker.toml` controls which candidates are retained:
+
+```toml
+[matching]
+mode = "all"   # default — keep every candidate, let downstream filter by rank
+# mode = "best" — keep only rank-1 rows per transaction
+```
 
 ## Crates
 
@@ -33,6 +50,7 @@ v0, early development. APIs will change. Limitations acknowledged in v0:
 - Datum decoding covers `Constr`, `Map`, `Array`, `BigInt::Int`, and `BoundedBytes`. `BigInt::BigUInt`/`BigNInt` round-trip as raw bytes.
 - The Cardano backend requires the caller to supply resolved input UTxOs synchronously — no `UtxoResolver` trait yet.
 - Lift output's `policies` map is empty pending a TII-side policy registry.
+- Within-source `tx_name` disambiguation stays weak: sibling transactions in the same TII (e.g. `open_cdp` vs. `close_cdp` in the same protocol) often produce nearly identical fingerprints because env values are substituted as opaque byte literals rather than typed constants. Score-based ranking separates *different* protocols reliably, but cannot distinguish siblings that share all the same party addresses and policies. This will improve when env values become typed constants during specialization (tracked as the "typed-flow" follow-up).
 
 ## License
 
