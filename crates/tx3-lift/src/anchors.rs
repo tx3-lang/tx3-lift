@@ -115,10 +115,18 @@ impl ProtocolAnchors {
 /// Try to parse `s` as `"<64 hex chars>#<decimal u32>"`.
 ///
 /// Returns `None` for any other shape (wrong length, non-hex txid,
-/// missing `#`, non-numeric index, index overflow).
+/// missing `#`, non-numeric index, leading sign, index overflow).
+///
+/// The index must consist entirely of ASCII digit characters so that strings
+/// like `"#+5"` or `"#-1"` are rejected, matching the normative pattern
+/// `^[0-9a-fA-F]{64}#[0-9]+$`.
 fn parse_utxo_ref(s: &str) -> Option<UtxoRef> {
     let (txid_hex, index_str) = s.split_once('#')?;
     if txid_hex.len() != 64 {
+        return None;
+    }
+    // Reject empty index or any non-digit character (e.g. leading '+'/'-').
+    if index_str.is_empty() || !index_str.bytes().all(|b| b.is_ascii_digit()) {
         return None;
     }
     let txid_bytes = hex::decode(txid_hex).ok()?;
@@ -299,6 +307,17 @@ mod tests {
     fn ref_with_non_numeric_index_is_ignored() {
         let txid_hex = "00430c1c2d2c57974069db6597184c8129a934ef0de6c701178bda822fd25a8a";
         let ref_str = format!("{}#notanumber", txid_hex);
+        let profile = make_profile(&[], json!({ "ref": ref_str }));
+        let anchors = ProtocolAnchors::from_profile(&profile).unwrap();
+        assert!(anchors.is_empty());
+    }
+
+    #[test]
+    fn ref_with_leading_plus_index_is_ignored() {
+        // `str::parse::<u32>()` accepts "+5" but the spec pattern `[0-9]+`
+        // does not — ensure such refs are rejected.
+        let txid_hex = "00430c1c2d2c57974069db6597184c8129a934ef0de6c701178bda822fd25a8a";
+        let ref_str = format!("{}#+5", txid_hex);
         let profile = make_profile(&[], json!({ "ref": ref_str }));
         let anchors = ProtocolAnchors::from_profile(&profile).unwrap();
         assert!(anchors.is_empty());
