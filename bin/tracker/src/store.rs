@@ -7,10 +7,8 @@ use tokio::sync::Mutex;
 
 use crate::error::Result;
 
-const MIGRATIONS: &[(&str, &str)] = &[(
-    "001_initial",
-    include_str!("../migrations/001_initial.sql"),
-)];
+const MIGRATIONS: &[(&str, &str)] =
+    &[("001_initial", include_str!("../migrations/001_initial.sql"))];
 
 #[derive(Clone, Debug)]
 pub struct Store {
@@ -97,11 +95,7 @@ impl Store {
 
     /// Apply a batch of matches and update the cursor in a single transaction.
     /// Re-inserting the same `(tx_hash, source_name)` pair is a no-op.
-    pub async fn apply_block(
-        &self,
-        cursor: ChainPoint,
-        rows: Vec<OwnedMatchRow>,
-    ) -> Result<usize> {
+    pub async fn apply_block(&self, cursor: ChainPoint, rows: Vec<OwnedMatchRow>) -> Result<usize> {
         let conn = self.inner.clone();
         let inserted = tokio::task::spawn_blocking(move || -> Result<usize> {
             let mut conn = conn.blocking_lock();

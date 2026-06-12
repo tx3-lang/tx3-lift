@@ -51,31 +51,52 @@ pub struct Fingerprint {
 impl Fingerprint {
     /// Cheap pre-filter: does the payload's chain-neutral summary satisfy every required-set?
     pub fn matches(&self, summary: &PayloadSummary) -> bool {
-        if !self.required_input_addresses.is_subset(&summary.input_addresses) {
+        if !self
+            .required_input_addresses
+            .is_subset(&summary.input_addresses)
+        {
             return false;
         }
-        if !self.required_output_addresses.is_subset(&summary.output_addresses) {
+        if !self
+            .required_output_addresses
+            .is_subset(&summary.output_addresses)
+        {
             return false;
         }
         if !self.required_input_refs.is_subset(&summary.input_refs) {
             return false;
         }
-        if !self.required_reference_refs.is_subset(&summary.reference_refs) {
+        if !self
+            .required_reference_refs
+            .is_subset(&summary.reference_refs)
+        {
             return false;
         }
-        if !self.required_mint_policies.is_subset(&summary.mint_policies) {
+        if !self
+            .required_mint_policies
+            .is_subset(&summary.mint_policies)
+        {
             return false;
         }
-        if !self.required_burn_policies.is_subset(&summary.burn_policies) {
+        if !self
+            .required_burn_policies
+            .is_subset(&summary.burn_policies)
+        {
             return false;
         }
-        if !self.required_value_policies.is_subset(&summary.value_policies) {
+        if !self
+            .required_value_policies
+            .is_subset(&summary.value_policies)
+        {
             return false;
         }
         if !self.required_signers.is_subset(&summary.signers) {
             return false;
         }
-        if !self.required_metadata_labels.is_subset(&summary.metadata_labels) {
+        if !self
+            .required_metadata_labels
+            .is_subset(&summary.metadata_labels)
+        {
             return false;
         }
         if summary.input_count < self.min_inputs {
@@ -174,8 +195,16 @@ pub fn extract(
 
     extract_inputs(&specialized.inputs, &mut fp);
     extract_outputs(&specialized.outputs, &mut fp);
-    extract_mints(&specialized.mints, &mut fp.required_mint_policies, &mut fp.min_mints);
-    extract_mints(&specialized.burns, &mut fp.required_burn_policies, &mut fp.min_burns);
+    extract_mints(
+        &specialized.mints,
+        &mut fp.required_mint_policies,
+        &mut fp.min_mints,
+    );
+    extract_mints(
+        &specialized.burns,
+        &mut fp.required_burn_policies,
+        &mut fp.min_burns,
+    );
     extract_references(&specialized.references, &mut fp);
     fp.min_collateral = u16::try_from(specialized.collateral.len()).unwrap_or(u16::MAX);
 

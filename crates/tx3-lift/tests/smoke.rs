@@ -22,18 +22,9 @@ fn parse_tii() -> TiiFile {
 
 fn build_args(receiver: &[u8]) -> ArgMap {
     let mut args = ArgMap::new();
-    args.insert(
-        "sender".to_string(),
-        ArgValue::Address(sender_addr()),
-    );
-    args.insert(
-        "receiver".to_string(),
-        ArgValue::Address(receiver.to_vec()),
-    );
-    args.insert(
-        "middleman".to_string(),
-        ArgValue::Address(middleman_addr()),
-    );
+    args.insert("sender".to_string(), ArgValue::Address(sender_addr()));
+    args.insert("receiver".to_string(), ArgValue::Address(receiver.to_vec()));
+    args.insert("middleman".to_string(), ArgValue::Address(middleman_addr()));
     args
 }
 
@@ -173,7 +164,8 @@ fn fingerprint_serde_round_trips() {
     let tii = parse_tii();
     let args = build_args(&receiver_addr());
     let specialized = specialize(&tii, "transfer", "preprod", &args).unwrap();
-    let fp = tx3_lift::fingerprint::extract(&tii, "transfer", "preprod", &specialized, &args).unwrap();
+    let fp =
+        tx3_lift::fingerprint::extract(&tii, "transfer", "preprod", &specialized, &args).unwrap();
 
     let json = serde_json::to_string(&fp).expect("serialize");
     let parsed: tx3_lift::Fingerprint = serde_json::from_str(&json).expect("deserialize");

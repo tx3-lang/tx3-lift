@@ -76,7 +76,14 @@ pub async fn apply_tx(
         hash: block_hash_bytes,
     };
 
-    let rows = run_specializations(specialized, lifter, &cardano_tx, &payload, block_slot, &block_hash_bytes)?;
+    let rows = run_specializations(
+        specialized,
+        lifter,
+        &cardano_tx,
+        &payload,
+        block_slot,
+        &block_hash_bytes,
+    )?;
     if !rows.is_empty() {
         info!(
             tx = %hex::encode(target_hash),
@@ -164,10 +171,7 @@ fn run_specializations(
 /// pull the resolved-output CBOR from `as_output.original_cbor`. This is what
 /// the v1beta spec carries for free, removing the need for a follow-up
 /// ReadUtxos round-trip (which can't return spent inputs anyway).
-fn collect_resolved_inputs(
-    tx: &u5c_cardano::Tx,
-    era: Era,
-) -> BTreeMap<UtxoRef, ResolvedOutput> {
+fn collect_resolved_inputs(tx: &u5c_cardano::Tx, era: Era) -> BTreeMap<UtxoRef, ResolvedOutput> {
     let mut out = BTreeMap::new();
     let all_inputs = tx.inputs.iter().chain(tx.reference_inputs.iter());
     for input in all_inputs {

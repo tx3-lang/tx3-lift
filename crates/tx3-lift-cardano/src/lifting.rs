@@ -7,8 +7,8 @@ use serde_bytes::ByteBuf;
 use tx3_lift::error::Error as LiftError;
 use tx3_lift::expr::const_address;
 use tx3_lift::lift::{
-    InputAnnotation, Lifted, MetadataAnnotation, MintAnnotation, OutputAnnotation,
-    PartyAnnotation, PartyRole, SignerAnnotation, TypedDatum,
+    InputAnnotation, Lifted, MetadataAnnotation, MintAnnotation, OutputAnnotation, PartyAnnotation,
+    PartyRole, SignerAnnotation, TypedDatum,
 };
 use tx3_lift::match_::MatchAssignment;
 use tx3_lift::specialize::decode_bech32_address;
@@ -37,8 +37,8 @@ pub fn lift(
 
     let mut parties: BTreeMap<String, PartyAnnotation> = BTreeMap::new();
     for (party_name, address_str) in &profile.parties {
-        let address_bytes = decode_bech32_address(address_str)
-            .map_err(|e| CardanoLiftError::Core(e))?;
+        let address_bytes =
+            decode_bech32_address(address_str).map_err(|e| CardanoLiftError::Core(e))?;
         parties.insert(
             party_name.clone(),
             PartyAnnotation {
@@ -107,13 +107,9 @@ fn lift_inputs(
             let resolved = payload.resolved_inputs.get(&key);
             let (address_bytes, assets, datum) = match resolved {
                 Some(resolved_output) => {
-                    let output =
-                        MultiEraOutput::decode(resolved_output.era, &resolved_output.cbor)
-                            .map_err(|e| CardanoLiftError::PallasDecode(e.to_string()))?;
-                    let addr = output
-                        .address()
-                        .map(|a| a.to_vec())
-                        .unwrap_or_default();
+                    let output = MultiEraOutput::decode(resolved_output.era, &resolved_output.cbor)
+                        .map_err(|e| CardanoLiftError::PallasDecode(e.to_string()))?;
+                    let addr = output.address().map(|a| a.to_vec()).unwrap_or_default();
                     let assets = collect_assets(&output);
                     let datum = decode_inline_datum(&output);
                     (addr, assets, datum)
@@ -213,11 +209,7 @@ fn lift_outputs(
     Ok(out)
 }
 
-fn lift_mints(
-    specialized: &Tx,
-    tx: &MultiEraTx<'_>,
-    map: &[Vec<usize>],
-) -> Vec<MintAnnotation> {
+fn lift_mints(specialized: &Tx, tx: &MultiEraTx<'_>, map: &[Vec<usize>]) -> Vec<MintAnnotation> {
     let mut out = Vec::new();
     let payload_mints = tx.mints();
     for (tir_idx, slots) in map.iter().enumerate() {
