@@ -22,7 +22,7 @@ pub struct MatchingConfig {
 }
 
 /// Candidate-selection strategy used by the matcher loop.
-#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MatchMode {
     /// Keep all match candidates (default).
@@ -140,7 +140,14 @@ profile = "mainnet"
     fn matching_mode_best_is_parsed() {
         let toml = format!("{MINIMAL_TOML}\n[matching]\nmode = \"best\"\n");
         let cfg: Config = toml::from_str(&toml).unwrap();
-        assert!(matches!(cfg.matching.mode, MatchMode::Best));
+        assert_eq!(cfg.matching.mode, MatchMode::Best);
+    }
+
+    #[test]
+    fn matching_mode_all_is_parsed() {
+        let toml = format!("{MINIMAL_TOML}\n[matching]\nmode = \"all\"\n");
+        let cfg: Config = toml::from_str(&toml).unwrap();
+        assert_eq!(cfg.matching.mode, MatchMode::All);
     }
 
     #[test]
