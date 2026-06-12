@@ -81,7 +81,7 @@ Derivation rules (`from_profile`):
   `specialize::decode_bech32_address` → `addresses`. A decode failure is an
   error (consistent with `args_from_profile`).
 - Environment string values matching `^[0-9a-fA-F]{64}#[0-9]+$` → `utxo_refs`
-  (txid bytes + u32 index). Captures indigo's 7 script refs, strike's
+  (txid bytes + u32 index). Captures indigo's 8 script refs, strike's
   `strike_script_ref`, bodega's and fluid-aquarium's `*_ref` entries.
 - Environment string values that are exactly 56 hex chars (28 bytes — the
   Cardano policy/script-hash length) → `policies`. A 28-byte asset name would
