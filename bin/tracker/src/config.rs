@@ -144,6 +144,13 @@ profile = "mainnet"
     }
 
     #[test]
+    fn matching_defaults_to_all_when_mode_omitted() {
+        let toml = format!("{MINIMAL_TOML}\n[matching]\n");
+        let cfg: Config = toml::from_str(&toml).unwrap();
+        assert!(matches!(cfg.matching.mode, MatchMode::All));
+    }
+
+    #[test]
     fn matching_mode_unknown_value_fails() {
         let toml = format!("{MINIMAL_TOML}\n[matching]\nmode = \"bogus\"\n");
         let result: std::result::Result<Config, _> = toml::from_str(&toml);
