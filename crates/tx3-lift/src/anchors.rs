@@ -54,7 +54,7 @@ impl ProtocolAnchors {
 
         // Parse environment values for utxo refs and policy ids.
         if let serde_json::Value::Object(env) = &profile.environment {
-            for (_key, value) in env {
+            for value in env.values() {
                 if let serde_json::Value::String(s) = value {
                     if let Some(utxo_ref) = parse_utxo_ref(s) {
                         anchors.utxo_refs.insert(utxo_ref);
@@ -590,7 +590,7 @@ mod tests {
 
     #[test]
     fn indigo_mainnet_profile_has_expected_anchors() {
-        // Mirror of protocols/indigo.tii mainnet profile (subset for brevity)
+        // Complete mirror of protocols/indigo.tii mainnet profile
         let profile = make_profile(
             &[
                 (
