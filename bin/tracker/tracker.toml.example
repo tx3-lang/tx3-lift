@@ -3,7 +3,9 @@
 
 [upstream]
 endpoint = "https://preview.utxorpc-v0.demeter.run"
-# api_key  = "dmtr_..."     # uncomment if your endpoint requires auth
+# api_key  = "dmtr_..."     # uncomment if your endpoint requires auth;
+                             # alternatively, set the DMTR_API_KEY env var
+                             # (TOML value takes precedence; empty env is ignored)
 intersect = "tip"            # or { slot = 12345, hash = "abcd..." }
 
 # Optional server-side filter that narrows the WatchTx stream. Leaving
