@@ -1,2 +1,7 @@
 /target
 Cargo.lock
+
+# Local tracker runtime files. The root tracker.toml is a working config that
+# may hold a real api_key; the db files are local state. Keep them out of git.
+/tracker.toml
+/tracker.db*
