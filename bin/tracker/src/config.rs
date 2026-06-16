@@ -120,8 +120,9 @@ pub fn load(path: impl AsRef<Path>) -> Result<Config> {
             "at least one [[sources]] entry is required".to_string(),
         ));
     }
+    // Both TOML and env sources ignore empty strings so neither can shadow the other with "".
     cfg.upstream.api_key = resolve_api_key(
-        cfg.upstream.api_key.take(),
+        cfg.upstream.api_key.take().filter(|s| !s.is_empty()),
         std::env::var("DMTR_API_KEY").ok().filter(|s| !s.is_empty()),
     );
     Ok(cfg)
@@ -167,6 +168,16 @@ profile = "mainnet"
     fn resolve_api_key_none_when_both_absent() {
         let result = resolve_api_key(None, None);
         assert_eq!(result, None);
+    }
+
+    #[test]
+    fn resolve_api_key_empty_toml_falls_back_to_env() {
+        // An explicit api_key = "" in TOML must not shadow a real env value.
+        let result = resolve_api_key(
+            Some("".to_string()).filter(|s| !s.is_empty()),
+            Some("env-key".to_string()),
+        );
+        assert_eq!(result, Some("env-key".to_string()));
     }
 
     #[test]
