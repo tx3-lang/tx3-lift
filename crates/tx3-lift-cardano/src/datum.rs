@@ -8,7 +8,9 @@ pub fn plutus_data_to_expression(data: &PlutusData) -> Expression {
         PlutusData::Constr(c) => {
             let constructor = c.any_constructor.unwrap_or(c.tag) as usize;
             let fields = match &c.fields {
-                MaybeIndefArray::Def(items) => items.iter().map(plutus_data_to_expression).collect(),
+                MaybeIndefArray::Def(items) => {
+                    items.iter().map(plutus_data_to_expression).collect()
+                }
                 MaybeIndefArray::Indef(items) => {
                     items.iter().map(plutus_data_to_expression).collect()
                 }

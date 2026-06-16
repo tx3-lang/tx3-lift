@@ -13,6 +13,10 @@ pub trait Payload {
 pub struct PayloadSummary {
     pub input_addresses: BTreeSet<ByteBuf>,
     pub output_addresses: BTreeSet<ByteBuf>,
+    /// Subset of `output_addresses`: only those outputs that carry a datum (inline or hash).
+    /// An address appears here at most once regardless of how many datum-bearing outputs it has.
+    /// Used to tell a stateful output-to-script (gating) apart from a bare payment (soft).
+    pub output_addresses_with_datum: BTreeSet<ByteBuf>,
     pub input_refs: BTreeSet<UtxoRef>,
     pub reference_refs: BTreeSet<UtxoRef>,
     pub mint_policies: BTreeSet<ByteBuf>,

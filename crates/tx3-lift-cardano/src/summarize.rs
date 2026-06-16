@@ -31,9 +31,11 @@ pub fn summarize(payload: &CardanoPayload) -> Result<PayloadSummary, CardanoLift
 
     for output in tx.outputs() {
         if let Ok(addr) = output.address() {
-            summary
-                .output_addresses
-                .insert(ByteBuf::from(addr.to_vec()));
+            let addr_bytes = ByteBuf::from(addr.to_vec());
+            summary.output_addresses.insert(addr_bytes.clone());
+            if output.datum().is_some() {
+                summary.output_addresses_with_datum.insert(addr_bytes);
+            }
         }
         for policy in output.value().assets() {
             summary

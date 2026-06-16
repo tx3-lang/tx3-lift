@@ -126,8 +126,7 @@ pub fn match_tx(
                         continue;
                     }
                     let oref = payload_ref.output_ref();
-                    if oref.hash().as_slice() == r.txid.as_slice()
-                        && oref.index() as u32 == r.index
+                    if oref.hash().as_slice() == r.txid.as_slice() && oref.index() as u32 == r.index
                     {
                         matched.push(i);
                         ref_consumed[i] = true;

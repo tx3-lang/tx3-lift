@@ -99,8 +99,8 @@ impl CardanoLifter {
         payload: &CardanoPayload,
         extra_args: &ArgMap,
     ) -> Result<Option<Lifted>, CardanoLiftError> {
-        let specialized = specialize(tii, tx_name, profile_name, extra_args)
-            .map_err(CardanoLiftError::Core)?;
+        let specialized =
+            specialize(tii, tx_name, profile_name, extra_args).map_err(CardanoLiftError::Core)?;
         let summary = self.matcher.summarize(payload)?;
         let fp = tx3_lift::fingerprint::fingerprint_for(tii, tx_name, profile_name)
             .map_err(CardanoLiftError::Core)?;
@@ -112,7 +112,14 @@ impl CardanoLifter {
             Some(a) => a,
             None => return Ok(None),
         };
-        let lifted = self.lift(tii, tx_name, profile_name, &specialized, payload, &assignment)?;
+        let lifted = self.lift(
+            tii,
+            tx_name,
+            profile_name,
+            &specialized,
+            payload,
+            &assignment,
+        )?;
         Ok(Some(lifted))
     }
 }
@@ -144,6 +151,13 @@ impl Lifter for CardanoLifter {
         payload: &Self::Payload,
         assignment: &MatchAssignment,
     ) -> Result<Lifted, Self::Error> {
-        lifting::lift(tii, tx_name, profile_name, specialized_tir, payload, assignment)
+        lifting::lift(
+            tii,
+            tx_name,
+            profile_name,
+            specialized_tir,
+            payload,
+            assignment,
+        )
     }
 }

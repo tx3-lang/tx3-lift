@@ -24,7 +24,8 @@ pub struct ResolvedOutput {
 
 impl CardanoPayload {
     pub fn from_cbor(bytes: Vec<u8>) -> Result<Self, CardanoLiftError> {
-        let _ = MultiEraTx::decode(&bytes).map_err(|e| CardanoLiftError::PallasDecode(e.to_string()))?;
+        let _ = MultiEraTx::decode(&bytes)
+            .map_err(|e| CardanoLiftError::PallasDecode(e.to_string()))?;
         Ok(Self {
             raw: bytes,
             resolved_inputs: BTreeMap::new(),

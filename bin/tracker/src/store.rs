@@ -7,10 +7,13 @@ use tokio::sync::Mutex;
 
 use crate::error::Result;
 
-const MIGRATIONS: &[(&str, &str)] = &[(
-    "001_initial",
-    include_str!("../migrations/001_initial.sql"),
-)];
+pub(crate) const MIGRATIONS: &[(&str, &str)] = &[
+    ("001_initial", include_str!("../migrations/001_initial.sql")),
+    (
+        "002_score_rank",
+        include_str!("../migrations/002_score_rank.sql"),
+    ),
+];
 
 #[derive(Clone, Debug)]
 pub struct Store {
@@ -33,6 +36,8 @@ pub struct MatchRow<'a> {
     pub tx_name: &'a str,
     pub profile_name: &'a str,
     pub lifted_json: &'a str,
+    pub score: u32,
+    pub match_rank: u32,
 }
 
 impl Store {
@@ -97,11 +102,7 @@ impl Store {
 
     /// Apply a batch of matches and update the cursor in a single transaction.
     /// Re-inserting the same `(tx_hash, source_name)` pair is a no-op.
-    pub async fn apply_block(
-        &self,
-        cursor: ChainPoint,
-        rows: Vec<OwnedMatchRow>,
-    ) -> Result<usize> {
+    pub async fn apply_block(&self, cursor: ChainPoint, rows: Vec<OwnedMatchRow>) -> Result<usize> {
         let conn = self.inner.clone();
         let inserted = tokio::task::spawn_blocking(move || -> Result<usize> {
             let mut conn = conn.blocking_lock();
@@ -112,8 +113,8 @@ impl Store {
                 let mut stmt = tx.prepare(
                     "INSERT OR IGNORE INTO matches \
                      (tx_hash, block_slot, block_hash, source_name, protocol_name, \
-                      tx_name, profile_name, lifted, matched_at) \
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                      tx_name, profile_name, lifted, matched_at, score, match_rank) \
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 )?;
                 for row in &rows {
                     let n = stmt.execute(params![
@@ -126,6 +127,8 @@ impl Store {
                         row.profile_name,
                         row.lifted_json,
                         now,
+                        row.score as i64,
+                        row.match_rank as i64,
                     ])?;
                     inserted += n;
                 }
@@ -180,6 +183,8 @@ pub struct OwnedMatchRow {
     pub tx_name: String,
     pub profile_name: String,
     pub lifted_json: String,
+    pub score: u32,
+    pub match_rank: u32,
 }
 
 impl<'a> From<MatchRow<'a>> for OwnedMatchRow {
@@ -193,6 +198,8 @@ impl<'a> From<MatchRow<'a>> for OwnedMatchRow {
             tx_name: r.tx_name.to_string(),
             profile_name: r.profile_name.to_string(),
             lifted_json: r.lifted_json.to_string(),
+            score: r.score,
+            match_rank: r.match_rank,
         }
     }
 }
@@ -219,11 +226,18 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             continue;
         }
 
-        conn.execute_batch(sql)?;
-        conn.execute(
+        // Wrap the migration SQL and the bookkeeping INSERT in a single
+        // transaction so a crash between them cannot leave the migration
+        // applied but unrecorded (which would cause the non-idempotent
+        // ALTER TABLE in 002 to fail with "duplicate column name" on the
+        // next open).
+        let tx = conn.unchecked_transaction()?;
+        tx.execute_batch(sql)?;
+        tx.execute(
             "INSERT INTO _schema_versions (name, applied_at) VALUES (?, ?)",
             params![name, unix_secs()],
         )?;
+        tx.commit()?;
     }
     Ok(())
 }

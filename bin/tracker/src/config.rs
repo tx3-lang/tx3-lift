@@ -10,6 +10,26 @@ pub struct Config {
     pub storage: StorageConfig,
     #[serde(default)]
     pub sources: Vec<SourceConfig>,
+    #[serde(default)]
+    pub matching: MatchingConfig,
+}
+
+/// Controls which match candidates the tracker retains per transaction.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct MatchingConfig {
+    #[serde(default)]
+    pub mode: MatchMode,
+}
+
+/// Candidate-selection strategy used by the matcher loop.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MatchMode {
+    /// Keep all match candidates (default).
+    #[default]
+    All,
+    /// Keep only the highest-ranked candidate per transaction.
+    Best,
 }
 
 /// Where the tracker pulls chain data from.
@@ -91,4 +111,56 @@ pub fn load(path: impl AsRef<Path>) -> Result<Config> {
         ));
     }
     Ok(cfg)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MINIMAL_TOML: &str = r#"
+[upstream]
+endpoint = "http://localhost:50051"
+
+[storage]
+database_path = "/tmp/tracker.db"
+
+[[sources]]
+name = "test"
+tii_path = "/tmp/test.tii"
+profile = "mainnet"
+"#;
+
+    #[test]
+    fn matching_defaults_to_all_when_block_omitted() {
+        let cfg: Config = toml::from_str(MINIMAL_TOML).unwrap();
+        assert!(matches!(cfg.matching.mode, MatchMode::All));
+    }
+
+    #[test]
+    fn matching_mode_best_is_parsed() {
+        let toml = format!("{MINIMAL_TOML}\n[matching]\nmode = \"best\"\n");
+        let cfg: Config = toml::from_str(&toml).unwrap();
+        assert_eq!(cfg.matching.mode, MatchMode::Best);
+    }
+
+    #[test]
+    fn matching_mode_all_is_parsed() {
+        let toml = format!("{MINIMAL_TOML}\n[matching]\nmode = \"all\"\n");
+        let cfg: Config = toml::from_str(&toml).unwrap();
+        assert_eq!(cfg.matching.mode, MatchMode::All);
+    }
+
+    #[test]
+    fn matching_defaults_to_all_when_mode_omitted() {
+        let toml = format!("{MINIMAL_TOML}\n[matching]\n");
+        let cfg: Config = toml::from_str(&toml).unwrap();
+        assert!(matches!(cfg.matching.mode, MatchMode::All));
+    }
+
+    #[test]
+    fn matching_mode_unknown_value_fails() {
+        let toml = format!("{MINIMAL_TOML}\n[matching]\nmode = \"bogus\"\n");
+        let result: std::result::Result<Config, _> = toml::from_str(&toml);
+        assert!(result.is_err());
+    }
 }
