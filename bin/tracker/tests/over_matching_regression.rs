@@ -86,8 +86,9 @@ fn incident_summary() -> PayloadSummary {
 /// Regression test for the over-matching incident.
 ///
 /// Five mainnet sources are loaded; vyfi is dropped (zero anchors); four
-/// survive. Each survivor's `anchors.hits()` must return 0 for the incident
-/// summary — the gate would have blocked every false-positive match.
+/// survive. For the incident summary each survivor must have `total == 0` and
+/// `gates() == false` — it intersects no anchor at all, so the gate would have
+/// blocked every false-positive match.
 #[test]
 fn incident_tx_hits_no_anchors_for_any_active_source() {
     let sources = vec![
@@ -111,23 +112,30 @@ fn incident_tx_hits_no_anchors_for_any_active_source() {
     let summary = incident_summary();
 
     for spec in &active {
-        let h = spec.anchors.hits(&summary);
+        let hits = spec.anchors.hits(&summary);
         assert_eq!(
-            h, 0,
-            "source {:?}: expected 0 anchor hits for the incident tx, got {}",
-            spec.name, h
+            hits.total, 0,
+            "source {:?}: expected 0 total anchor hits for the incident tx, got {}",
+            spec.name, hits.total
+        );
+        assert!(
+            !hits.gates(),
+            "source {:?}: incident tx must not gate, got gating={}",
+            spec.name,
+            hits.gating
         );
     }
 }
 
-// ── positive control: a real indigo anchor in the summary IS detected ────────
+// ── positive control: a gating indigo anchor IS detected ─────────────────────
 
 /// Positive control so the test can't pass vacuously.
 ///
-/// When the summary contains the indigo `cdpscript` address, the indigo
-/// source's `anchors.hits()` must return > 0.
+/// When the summary spends from the indigo `cdpscript` address (the address in
+/// `input_addresses` — a script execution), the indigo source's anchors must
+/// gate.
 #[test]
-fn incident_tx_with_indigo_anchor_hits_indigo() {
+fn incident_tx_with_indigo_gating_anchor_gates_indigo() {
     let sources = vec![source("indigo", "mainnet")];
     let active = specialize_all(&sources).expect("specialize_all on indigo/mainnet must succeed");
     assert_eq!(active.len(), 1, "indigo/mainnet must survive the filter");
@@ -140,15 +148,64 @@ fn incident_tx_with_indigo_anchor_hits_indigo() {
             .expect("cdpscript bech32 decode must succeed");
     let cdpscript_buf = ByteBuf::from(cdpscript_bytes);
 
-    // Build a summary that otherwise looks like the incident tx, but with the
-    // cdpscript address injected as an output address.
+    // Build a summary that otherwise looks like the incident tx, but spending
+    // FROM the cdpscript address (gating: the validator executed).
+    let mut summary = incident_summary();
+    summary.input_addresses.insert(cdpscript_buf);
+
+    let hits = indigo_spec.anchors.hits(&summary);
+    assert!(
+        hits.gates(),
+        "spending from the indigo cdpscript address must gate; got gating={}",
+        hits.gating
+    );
+    assert_eq!(
+        hits.gating, 1,
+        "exactly the cdpscript address gates; got gating={}",
+        hits.gating
+    );
+}
+
+// ── soft-hit companion: bare output / value-policy does NOT gate ─────────────
+
+/// Pins the live-run false-positive class: a tx that merely pays bare ADA to
+/// the indigo `cdpscript` address (no datum) and/or holds the iAsset policy in
+/// value must register `total >= 1` but **not** gate. This is exactly the shape
+/// of the 14 `score == 1` value-policy rows the gate is meant to drop.
+#[test]
+fn indigo_soft_hits_do_not_gate() {
+    let sources = vec![source("indigo", "mainnet")];
+    let active = specialize_all(&sources).expect("specialize_all on indigo/mainnet must succeed");
+    assert_eq!(active.len(), 1, "indigo/mainnet must survive the filter");
+
+    let indigo_spec = &active[0];
+
+    // cdpscript bech32 from the indigo mainnet profile — placed as a BARE output
+    // (no datum), the soft tier.
+    let cdpscript_buf = ByteBuf::from(
+        decode_bech32_address("addr1wyyqtkz5rken7jzptp076np606r79lmsrqjrqw8sdn4kvrqewrkdg")
+            .expect("cdpscript bech32 decode must succeed"),
+    );
+
+    // iasset_policy_id from the indigo mainnet profile — merely present in value.
+    let iasset_policy = ByteBuf::from(
+        hex::decode("f66d78b4a3cb3d37afa0ec36461e51ecbde00f26c8f0a68f94b69880")
+            .expect("iasset policy hex decode"),
+    );
+
     let mut summary = incident_summary();
     summary.output_addresses.insert(cdpscript_buf);
+    summary.value_policies.insert(iasset_policy);
 
-    let h = indigo_spec.anchors.hits(&summary);
+    let hits = indigo_spec.anchors.hits(&summary);
     assert!(
-        h > 0,
-        "indigo anchors must detect a hit when cdpscript address is present; got {}",
-        h
+        hits.total >= 1,
+        "the soft hits must still register in total; got total={}",
+        hits.total
+    );
+    assert!(
+        !hits.gates(),
+        "bare output + value-policy must NOT gate (this is the live false-positive class); got gating={}",
+        hits.gating
     );
 }

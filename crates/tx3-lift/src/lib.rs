@@ -25,7 +25,7 @@ pub mod match_;
 pub mod payload;
 pub mod specialize;
 
-pub use anchors::ProtocolAnchors;
+pub use anchors::{AnchorHits, ProtocolAnchors};
 pub use error::Error;
 pub use fingerprint::{fingerprint_for, fingerprints_for_all, Fingerprint};
 pub use lift::{

@@ -151,10 +151,13 @@ fn run_specializations(
     // 1. Gate + collect candidates (no lifting yet).
     let mut candidates: Vec<Candidate<'_, LiftInputs<'_>>> = Vec::new();
     for spec in specialized {
-        // Anchor gate: a source the tx touches no anchor of is skipped
-        // entirely, before any per-tx-name fingerprint/match work.
-        let anchor_hits = spec.anchors.hits(&summary);
-        if anchor_hits == 0 {
+        // Anchor gate: skip a source unless the tx forces one of its scripts to
+        // run (spend-from-script, mint/burn, script-ref, or a datum-bearing
+        // output at its address). Soft hits (bare output / value-policy) do not
+        // gate on their own. Computed once per source, before any per-tx-name
+        // fingerprint/match work.
+        let hits = spec.anchors.hits(&summary);
+        if !hits.gates() {
             continue;
         }
         for (tx_name, (tir, fp)) in &spec.txs {
@@ -165,7 +168,9 @@ fn run_specializations(
                 Some(a) => a,
                 None => continue,
             };
-            let score = u32::try_from(anchor_hits + fp.information_score()).unwrap_or(u32::MAX);
+            // `total` reproduces the old flat anchor count, so persisted scores
+            // are unchanged for genuinely-strong matches.
+            let score = u32::try_from(hits.total + fp.information_score()).unwrap_or(u32::MAX);
             candidates.push(Candidate {
                 source_name: &spec.name,
                 tx_name,

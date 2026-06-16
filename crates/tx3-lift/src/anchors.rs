@@ -16,6 +16,31 @@ use crate::error::Error;
 use crate::payload::{PayloadSummary, UtxoRef};
 use crate::specialize::decode_bech32_address;
 
+/// Tiered count of distinct anchors a [`PayloadSummary`] hits.
+///
+/// `total` reproduces the flat distinct-anchor count (used for `score`);
+/// `gating` counts only anchors with a **script-execution / stateful-output**
+/// presence (spend-from-script, mint/burn under an anchor policy, script-ref
+/// in use, or an output-to-script carrying a datum). Soft presences (a bare
+/// payment to a script address, or an anchor asset merely circulating in value)
+/// raise `total` but never `gating`.
+///
+/// Each distinct anchor is counted at most once in each field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AnchorHits {
+    /// Distinct anchors with at least one gating-tier presence.
+    pub gating: usize,
+    /// Distinct anchors present at all (gating or soft).
+    pub total: usize,
+}
+
+impl AnchorHits {
+    /// A source gates a tx iff it has at least one gating-tier anchor hit.
+    pub fn gates(&self) -> bool {
+        self.gating > 0
+    }
+}
+
 /// Chain-neutral anchors extracted from a single TII [`Profile`].
 ///
 /// Three categories are supported:
@@ -74,41 +99,67 @@ impl ProtocolAnchors {
         self.addresses.is_empty() && self.utxo_refs.is_empty() && self.policies.is_empty()
     }
 
-    /// Count of distinct anchors present in `summary`.
+    /// Tiered count of distinct anchors present in `summary`.
     ///
-    /// Each anchor class is checked against the corresponding summary sets:
-    /// - addresses → `input_addresses ∪ output_addresses`
-    /// - utxo_refs → `input_refs ∪ reference_refs`
-    /// - policies  → `mint_policies ∪ burn_policies ∪ value_policies`
+    /// For each distinct anchor, classify its presence (see [`AnchorHits`]):
     ///
-    /// An anchor appearing on both sides (e.g. same address in inputs and
-    /// outputs) counts once.
-    pub fn hits(&self, summary: &PayloadSummary) -> usize {
-        let addr_hits = self
-            .addresses
-            .iter()
-            .filter(|a| {
-                summary.input_addresses.contains(*a) || summary.output_addresses.contains(*a)
-            })
-            .count();
+    /// - **Address** anchor: *gating* if in `input_addresses` (spend from the
+    ///   script) or in `output_addresses_with_datum` (a stateful output);
+    ///   *soft* if in `output_addresses` but not the datum set (a bare payment);
+    ///   absent otherwise.
+    /// - **utxo_ref** anchor: *gating* if in `input_refs ∪ reference_refs`
+    ///   (the deployed script is in use); never soft; absent otherwise.
+    /// - **Policy** anchor: *gating* if in `mint_policies ∪ burn_policies`
+    ///   (the policy executed); *soft* if in `value_policies` but not minted /
+    ///   burned (the asset merely circulates); absent otherwise.
+    ///
+    /// `total` counts every anchor with any presence; `gating` counts only
+    /// anchors with at least one gating presence. Each anchor counts once per
+    /// field (e.g. an address present as both a spend and a bare output is one
+    /// gating hit). `total` equals the old flat distinct-anchor count, so
+    /// `score` is unchanged; `gating` is the new gate signal.
+    pub fn hits(&self, summary: &PayloadSummary) -> AnchorHits {
+        let mut hits = AnchorHits {
+            gating: 0,
+            total: 0,
+        };
 
-        let ref_hits = self
-            .utxo_refs
-            .iter()
-            .filter(|r| summary.input_refs.contains(*r) || summary.reference_refs.contains(*r))
-            .count();
+        for address in &self.addresses {
+            // `output_addresses_with_datum` is a subset of `output_addresses`,
+            // so a datum hit is necessarily also an output hit — classify it
+            // gating and count once.
+            let gating = summary.input_addresses.contains(address)
+                || summary.output_addresses_with_datum.contains(address);
+            let present = gating || summary.output_addresses.contains(address);
+            if present {
+                hits.total += 1;
+                if gating {
+                    hits.gating += 1;
+                }
+            }
+        }
 
-        let policy_hits = self
-            .policies
-            .iter()
-            .filter(|p| {
-                summary.mint_policies.contains(*p)
-                    || summary.burn_policies.contains(*p)
-                    || summary.value_policies.contains(*p)
-            })
-            .count();
+        for utxo_ref in &self.utxo_refs {
+            // A script-ref hit is always gating; there is no soft tier for refs.
+            if summary.input_refs.contains(utxo_ref) || summary.reference_refs.contains(utxo_ref) {
+                hits.total += 1;
+                hits.gating += 1;
+            }
+        }
 
-        addr_hits + ref_hits + policy_hits
+        for policy in &self.policies {
+            let gating =
+                summary.mint_policies.contains(policy) || summary.burn_policies.contains(policy);
+            let present = gating || summary.value_policies.contains(policy);
+            if present {
+                hits.total += 1;
+                if gating {
+                    hits.gating += 1;
+                }
+            }
+        }
+
+        hits
     }
 }
 
@@ -383,7 +434,11 @@ mod tests {
         assert!(anchors.is_empty());
     }
 
-    // ── hits ─────────────────────────────────────────────────────────────
+    // ── hits (tiered) ────────────────────────────────────────────────────
+    //
+    // `hits()` returns `AnchorHits { gating, total }`. `total` reproduces the
+    // old flat distinct-anchor count; `gating` counts only anchors with a
+    // script-execution / stateful-output presence. Each test asserts both.
 
     fn make_summary() -> PayloadSummary {
         PayloadSummary::default()
@@ -394,11 +449,15 @@ mod tests {
         let bech32 = "addr1wyyqtkz5rken7jzptp076np606r79lmsrqjrqw8sdn4kvrqewrkdg";
         let profile = make_profile(&[("cdpscript", bech32)], json!({}));
         let anchors = ProtocolAnchors::from_profile(&profile).unwrap();
-        assert_eq!(anchors.hits(&make_summary()), 0);
+        let hits = anchors.hits(&make_summary());
+        assert_eq!(hits.gating, 0);
+        assert_eq!(hits.total, 0);
+        assert!(!hits.gates());
     }
 
     #[test]
-    fn hits_counts_address_in_inputs() {
+    fn hits_address_in_inputs_is_gating() {
+        // spend-from-script: anchor addr in input_addresses → gating.
         let bech32 = "addr1wyyqtkz5rken7jzptp076np606r79lmsrqjrqw8sdn4kvrqewrkdg";
         let profile = make_profile(&[("cdpscript", bech32)], json!({}));
         let anchors = ProtocolAnchors::from_profile(&profile).unwrap();
@@ -407,11 +466,16 @@ mod tests {
         let mut summary = make_summary();
         summary.input_addresses.insert(addr_bytes);
 
-        assert_eq!(anchors.hits(&summary), 1);
+        let hits = anchors.hits(&summary);
+        assert_eq!(hits.gating, 1);
+        assert_eq!(hits.total, 1);
+        assert!(hits.gates());
     }
 
     #[test]
-    fn hits_counts_address_in_outputs() {
+    fn hits_address_in_outputs_without_datum_is_soft() {
+        // output-to-script WITHOUT datum: anchor addr in output_addresses only
+        // (not in output_addresses_with_datum) → soft (total but not gating).
         let bech32 = "addr1wyyqtkz5rken7jzptp076np606r79lmsrqjrqw8sdn4kvrqewrkdg";
         let profile = make_profile(&[("cdpscript", bech32)], json!({}));
         let anchors = ProtocolAnchors::from_profile(&profile).unwrap();
@@ -420,11 +484,35 @@ mod tests {
         let mut summary = make_summary();
         summary.output_addresses.insert(addr_bytes);
 
-        assert_eq!(anchors.hits(&summary), 1);
+        let hits = anchors.hits(&summary);
+        assert_eq!(hits.gating, 0);
+        assert_eq!(hits.total, 1);
+        assert!(!hits.gates());
     }
 
     #[test]
-    fn address_in_both_input_and_output_counts_once() {
+    fn hits_address_in_outputs_with_datum_is_gating() {
+        // output-to-script WITH datum: anchor addr in BOTH output_addresses and
+        // output_addresses_with_datum → gating (stateful output created).
+        let bech32 = "addr1wyyqtkz5rken7jzptp076np606r79lmsrqjrqw8sdn4kvrqewrkdg";
+        let profile = make_profile(&[("cdpscript", bech32)], json!({}));
+        let anchors = ProtocolAnchors::from_profile(&profile).unwrap();
+
+        let addr_bytes = ByteBuf::from(decode_bech32_address(bech32).unwrap());
+        let mut summary = make_summary();
+        summary.output_addresses.insert(addr_bytes.clone());
+        summary.output_addresses_with_datum.insert(addr_bytes);
+
+        let hits = anchors.hits(&summary);
+        assert_eq!(hits.gating, 1);
+        assert_eq!(hits.total, 1);
+        assert!(hits.gates());
+    }
+
+    #[test]
+    fn address_in_both_input_and_output_counts_once_and_gates() {
+        // Present in input_addresses (gating) AND output_addresses (no datum,
+        // soft): the gating presence wins; the anchor counts once each.
         let bech32 = "addr1wyyqtkz5rken7jzptp076np606r79lmsrqjrqw8sdn4kvrqewrkdg";
         let profile = make_profile(&[("cdpscript", bech32)], json!({}));
         let anchors = ProtocolAnchors::from_profile(&profile).unwrap();
@@ -434,11 +522,14 @@ mod tests {
         summary.input_addresses.insert(addr_bytes.clone());
         summary.output_addresses.insert(addr_bytes);
 
-        assert_eq!(anchors.hits(&summary), 1);
+        let hits = anchors.hits(&summary);
+        assert_eq!(hits.gating, 1);
+        assert_eq!(hits.total, 1);
+        assert!(hits.gates());
     }
 
     #[test]
-    fn hits_counts_utxo_ref_in_input_refs() {
+    fn hits_utxo_ref_in_input_refs_is_gating() {
         let txid_hex = "00430c1c2d2c57974069db6597184c8129a934ef0de6c701178bda822fd25a8a";
         let ref_str = format!("{}#0", txid_hex);
         let profile = make_profile(&[], json!({ "ref": ref_str }));
@@ -448,11 +539,14 @@ mod tests {
         let mut summary = make_summary();
         summary.input_refs.insert((txid, 0u32));
 
-        assert_eq!(anchors.hits(&summary), 1);
+        let hits = anchors.hits(&summary);
+        assert_eq!(hits.gating, 1);
+        assert_eq!(hits.total, 1);
+        assert!(hits.gates());
     }
 
     #[test]
-    fn hits_counts_utxo_ref_in_reference_refs() {
+    fn hits_utxo_ref_in_reference_refs_is_gating() {
         let txid_hex = "00430c1c2d2c57974069db6597184c8129a934ef0de6c701178bda822fd25a8a";
         let ref_str = format!("{}#0", txid_hex);
         let profile = make_profile(&[], json!({ "ref": ref_str }));
@@ -462,7 +556,10 @@ mod tests {
         let mut summary = make_summary();
         summary.reference_refs.insert((txid, 0u32));
 
-        assert_eq!(anchors.hits(&summary), 1);
+        let hits = anchors.hits(&summary);
+        assert_eq!(hits.gating, 1);
+        assert_eq!(hits.total, 1);
+        assert!(hits.gates());
     }
 
     #[test]
@@ -477,11 +574,14 @@ mod tests {
         summary.input_refs.insert((txid.clone(), 0u32));
         summary.reference_refs.insert((txid, 0u32));
 
-        assert_eq!(anchors.hits(&summary), 1);
+        let hits = anchors.hits(&summary);
+        assert_eq!(hits.gating, 1);
+        assert_eq!(hits.total, 1);
+        assert!(hits.gates());
     }
 
     #[test]
-    fn hits_counts_policy_in_mint_policies() {
+    fn hits_policy_in_mint_policies_is_gating() {
         let policy_hex = "735b37149eb0c2a5fb590bd60e39fe90ae3a96b6065b05d7aca99ebb";
         let profile = make_profile(&[], json!({ "policy": policy_hex }));
         let anchors = ProtocolAnchors::from_profile(&profile).unwrap();
@@ -490,11 +590,14 @@ mod tests {
         let mut summary = make_summary();
         summary.mint_policies.insert(policy);
 
-        assert_eq!(anchors.hits(&summary), 1);
+        let hits = anchors.hits(&summary);
+        assert_eq!(hits.gating, 1);
+        assert_eq!(hits.total, 1);
+        assert!(hits.gates());
     }
 
     #[test]
-    fn hits_counts_policy_in_burn_policies() {
+    fn hits_policy_in_burn_policies_is_gating() {
         let policy_hex = "735b37149eb0c2a5fb590bd60e39fe90ae3a96b6065b05d7aca99ebb";
         let profile = make_profile(&[], json!({ "policy": policy_hex }));
         let anchors = ProtocolAnchors::from_profile(&profile).unwrap();
@@ -503,11 +606,15 @@ mod tests {
         let mut summary = make_summary();
         summary.burn_policies.insert(policy);
 
-        assert_eq!(anchors.hits(&summary), 1);
+        let hits = anchors.hits(&summary);
+        assert_eq!(hits.gating, 1);
+        assert_eq!(hits.total, 1);
+        assert!(hits.gates());
     }
 
     #[test]
-    fn hits_counts_policy_in_value_policies() {
+    fn hits_policy_in_value_policies_is_soft() {
+        // value-policy only: asset merely circulating → soft (total not gating).
         let policy_hex = "735b37149eb0c2a5fb590bd60e39fe90ae3a96b6065b05d7aca99ebb";
         let profile = make_profile(&[], json!({ "policy": policy_hex }));
         let anchors = ProtocolAnchors::from_profile(&profile).unwrap();
@@ -516,11 +623,16 @@ mod tests {
         let mut summary = make_summary();
         summary.value_policies.insert(policy);
 
-        assert_eq!(anchors.hits(&summary), 1);
+        let hits = anchors.hits(&summary);
+        assert_eq!(hits.gating, 0);
+        assert_eq!(hits.total, 1);
+        assert!(!hits.gates());
     }
 
     #[test]
     fn hits_counts_across_all_three_anchor_classes() {
+        // All three anchors land in gating positions: address in
+        // input_addresses, ref in reference_refs, policy in mint_policies.
         let bech32 = "addr1wyyqtkz5rken7jzptp076np606r79lmsrqjrqw8sdn4kvrqewrkdg";
         let txid_hex = "00430c1c2d2c57974069db6597184c8129a934ef0de6c701178bda822fd25a8a";
         let ref_str = format!("{}#0", txid_hex);
@@ -540,15 +652,19 @@ mod tests {
         let policy = ByteBuf::from(hex::decode(policy_hex).unwrap());
 
         let mut summary = make_summary();
-        summary.output_addresses.insert(addr_bytes);
+        summary.input_addresses.insert(addr_bytes);
         summary.reference_refs.insert((txid, 0u32));
-        summary.value_policies.insert(policy);
+        summary.mint_policies.insert(policy);
 
-        assert_eq!(anchors.hits(&summary), 3);
+        let hits = anchors.hits(&summary);
+        assert_eq!(hits.gating, 3);
+        assert_eq!(hits.total, 3);
+        assert!(hits.gates());
     }
 
     #[test]
-    fn hits_counts_multiple_policies() {
+    fn hits_counts_multiple_policies_value_only() {
+        // Two distinct anchors, both in value_policies → soft: total 2, gating 0.
         let policy1 = "735b37149eb0c2a5fb590bd60e39fe90ae3a96b6065b05d7aca99ebb";
         let policy2 = "708f5e6d597fc038d09a738d7be32edd6ea779d6feb32a53668d9050";
 
@@ -568,7 +684,39 @@ mod tests {
         summary.value_policies.insert(p1);
         summary.value_policies.insert(p2);
 
-        assert_eq!(anchors.hits(&summary), 2);
+        let hits = anchors.hits(&summary);
+        assert_eq!(hits.gating, 0);
+        assert_eq!(hits.total, 2);
+        assert!(!hits.gates());
+    }
+
+    #[test]
+    fn hits_mixed_gating_and_soft_policies() {
+        // One policy minted (gating), a DIFFERENT policy merely held (soft):
+        // total 2, gating 1.
+        let minted = "735b37149eb0c2a5fb590bd60e39fe90ae3a96b6065b05d7aca99ebb";
+        let held = "708f5e6d597fc038d09a738d7be32edd6ea779d6feb32a53668d9050";
+
+        let profile = make_profile(
+            &[],
+            json!({
+                "minted": minted,
+                "held": held
+            }),
+        );
+        let anchors = ProtocolAnchors::from_profile(&profile).unwrap();
+
+        let p_minted = ByteBuf::from(hex::decode(minted).unwrap());
+        let p_held = ByteBuf::from(hex::decode(held).unwrap());
+
+        let mut summary = make_summary();
+        summary.mint_policies.insert(p_minted);
+        summary.value_policies.insert(p_held);
+
+        let hits = anchors.hits(&summary);
+        assert_eq!(hits.gating, 1);
+        assert_eq!(hits.total, 2);
+        assert!(hits.gates());
     }
 
     #[test]
@@ -578,12 +726,15 @@ mod tests {
         let profile = make_profile(&[("cdpscript", bech32)], json!({ "policy": policy_hex }));
         let anchors = ProtocolAnchors::from_profile(&profile).unwrap();
 
-        // Summary only contains the policy, not the address
+        // Summary only contains the policy (minted, gating), not the address.
         let policy = ByteBuf::from(hex::decode(policy_hex).unwrap());
         let mut summary = make_summary();
         summary.mint_policies.insert(policy);
 
-        assert_eq!(anchors.hits(&summary), 1);
+        let hits = anchors.hits(&summary);
+        assert_eq!(hits.gating, 1);
+        assert_eq!(hits.total, 1);
+        assert!(hits.gates());
     }
 
     // ── indigo real-profile smoke test ───────────────────────────────────
