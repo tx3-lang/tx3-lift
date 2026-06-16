@@ -108,7 +108,7 @@ pub struct SourceConfig {
 /// variable value (`env`) is used. Returns `None` when both are absent.
 /// This is a pure function — callers read `std::env::var` and pass the result
 /// in, keeping this function deterministic and testable.
-pub fn resolve_api_key(toml: Option<String>, env: Option<String>) -> Option<String> {
+pub(crate) fn resolve_api_key(toml: Option<String>, env: Option<String>) -> Option<String> {
     toml.or(env)
 }
 
@@ -122,13 +122,17 @@ pub fn load(path: impl AsRef<Path>) -> Result<Config> {
     }
     cfg.upstream.api_key = resolve_api_key(
         cfg.upstream.api_key.take(),
-        std::env::var("DMTR_API_KEY").ok(),
+        std::env::var("DMTR_API_KEY").ok().filter(|s| !s.is_empty()),
     );
     Ok(cfg)
 }
 
 #[cfg(test)]
 mod tests {
+    // Safety note: the `resolve_api_key` tests below are env-safe because they
+    // call the pure function directly without touching `std::env`. Any future
+    // test that exercises `config::load` with `DMTR_API_KEY` set must serialize
+    // env access (e.g. via a mutex) to avoid races with parallel test threads.
     use super::*;
 
     const MINIMAL_TOML: &str = r#"
