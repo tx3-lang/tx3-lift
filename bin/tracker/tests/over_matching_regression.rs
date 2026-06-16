@@ -198,14 +198,52 @@ fn indigo_soft_hits_do_not_gate() {
     summary.value_policies.insert(iasset_policy);
 
     let hits = indigo_spec.anchors.hits(&summary);
-    assert!(
-        hits.total >= 1,
-        "the soft hits must still register in total; got total={}",
+    assert_eq!(
+        hits.total, 2,
+        "both soft hits (bare cdpscript output + iAsset value-policy) must register in total; got total={}",
         hits.total
     );
     assert!(
         !hits.gates(),
         "bare output + value-policy must NOT gate (this is the live false-positive class); got gating={}",
+        hits.gating
+    );
+}
+
+// ── datum-output gating: a stateful output at a script address DOES gate ──────
+
+/// Companion to the spend-from-script control: an output to the indigo
+/// `cdpscript` address that carries a datum (a stateful position output — the
+/// "open a CDP" flow) gates via the datum-corroboration tier, exercising the
+/// `output_addresses_with_datum` path end to end through the anchor logic.
+#[test]
+fn indigo_datum_output_gates() {
+    let sources = vec![source("indigo", "mainnet")];
+    let active = specialize_all(&sources).expect("specialize_all on indigo/mainnet must succeed");
+    assert_eq!(active.len(), 1, "indigo/mainnet must survive the filter");
+
+    let indigo_spec = &active[0];
+
+    let cdpscript_buf = ByteBuf::from(
+        decode_bech32_address("addr1wyyqtkz5rken7jzptp076np606r79lmsrqjrqw8sdn4kvrqewrkdg")
+            .expect("cdpscript bech32 decode must succeed"),
+    );
+
+    // A datum-bearing output at the script address: present in output_addresses
+    // AND in the datum subset (the gating tier).
+    let mut summary = incident_summary();
+    summary.output_addresses.insert(cdpscript_buf.clone());
+    summary.output_addresses_with_datum.insert(cdpscript_buf);
+
+    let hits = indigo_spec.anchors.hits(&summary);
+    assert!(
+        hits.gates(),
+        "a datum-bearing output at the cdpscript address must gate; got gating={}",
+        hits.gating
+    );
+    assert_eq!(
+        hits.gating, 1,
+        "exactly the cdpscript datum-output gates; got gating={}",
         hits.gating
     );
 }

@@ -26,7 +26,7 @@ use crate::specialize::decode_bech32_address;
 /// raise `total` but never `gating`.
 ///
 /// Each distinct anchor is counted at most once in each field.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct AnchorHits {
     /// Distinct anchors with at least one gating-tier presence.
     pub gating: usize,
@@ -119,15 +119,13 @@ impl ProtocolAnchors {
     /// gating hit). `total` equals the old flat distinct-anchor count, so
     /// `score` is unchanged; `gating` is the new gate signal.
     pub fn hits(&self, summary: &PayloadSummary) -> AnchorHits {
-        let mut hits = AnchorHits {
-            gating: 0,
-            total: 0,
-        };
+        let mut hits = AnchorHits::default();
 
         for address in &self.addresses {
-            // `output_addresses_with_datum` is a subset of `output_addresses`,
-            // so a datum hit is necessarily also an output hit — classify it
-            // gating and count once.
+            // When `gating` is true the `||` short-circuits and `present` is
+            // true without consulting `output_addresses` — so the count is
+            // correct regardless of the datum-subset invariant. The only case
+            // where present=true and gating=false is a bare output (no datum).
             let gating = summary.input_addresses.contains(address)
                 || summary.output_addresses_with_datum.contains(address);
             let present = gating || summary.output_addresses.contains(address);
@@ -659,6 +657,39 @@ mod tests {
         let hits = anchors.hits(&summary);
         assert_eq!(hits.gating, 3);
         assert_eq!(hits.total, 3);
+        assert!(hits.gates());
+    }
+
+    #[test]
+    fn hits_mixed_across_all_three_anchor_classes() {
+        // Soft address (bare output), gating ref, soft policy (value-only):
+        // all three present (total 3) but only the ref gates (gating 1).
+        let bech32 = "addr1wyyqtkz5rken7jzptp076np606r79lmsrqjrqw8sdn4kvrqewrkdg";
+        let txid_hex = "00430c1c2d2c57974069db6597184c8129a934ef0de6c701178bda822fd25a8a";
+        let ref_str = format!("{}#0", txid_hex);
+        let policy_hex = "735b37149eb0c2a5fb590bd60e39fe90ae3a96b6065b05d7aca99ebb";
+
+        let profile = make_profile(
+            &[("cdpscript", bech32)],
+            json!({
+                "cdp_spend_ref": ref_str,
+                "cdp_creator_policy_id": policy_hex
+            }),
+        );
+        let anchors = ProtocolAnchors::from_profile(&profile).unwrap();
+
+        let addr_bytes = ByteBuf::from(decode_bech32_address(bech32).unwrap());
+        let txid = ByteBuf::from(hex::decode(txid_hex).unwrap());
+        let policy = ByteBuf::from(hex::decode(policy_hex).unwrap());
+
+        let mut summary = make_summary();
+        summary.output_addresses.insert(addr_bytes); // bare output → soft
+        summary.reference_refs.insert((txid, 0u32)); // script-ref → gating
+        summary.value_policies.insert(policy); // value-only → soft
+
+        let hits = anchors.hits(&summary);
+        assert_eq!(hits.gating, 1, "only the script-ref gates");
+        assert_eq!(hits.total, 3, "all three anchors are present");
         assert!(hits.gates());
     }
 
