@@ -6,7 +6,8 @@ fn output_addresses_with_datum_populated_correctly() {
     let payload = tx3_lift_cardano::payload::CardanoPayload::from_cbor(bytes).unwrap();
     let summary = tx3_lift_cardano::summarize::summarize(&payload).unwrap();
 
-    // Total distinct output addresses (3 outputs, but the script address appears twice).
+    // Real mainnet tx 71e890106c10145d721bb91f8deef6b9bf1205f5cf8f14fd1ca4f4c7ae9adc3c.
+    // 4 outputs, but the script address appears twice, so 3 distinct addresses.
     assert_eq!(
         summary.output_addresses.len(),
         3,
