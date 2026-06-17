@@ -102,19 +102,38 @@ pub struct SourceConfig {
     pub profile: String,
 }
 
+/// Resolve the API key from two possible sources.
+///
+/// Explicit TOML value (`toml`) wins when present; otherwise the environment
+/// variable value (`env`) is used. Returns `None` when both are absent.
+/// This is a pure function — callers read `std::env::var` and pass the result
+/// in, keeping this function deterministic and testable.
+pub(crate) fn resolve_api_key(toml: Option<String>, env: Option<String>) -> Option<String> {
+    toml.or(env)
+}
+
 pub fn load(path: impl AsRef<Path>) -> Result<Config> {
     let contents = std::fs::read_to_string(path.as_ref())?;
-    let cfg: Config = toml::from_str(&contents)?;
+    let mut cfg: Config = toml::from_str(&contents)?;
     if cfg.sources.is_empty() {
         return Err(Error::Config(
             "at least one [[sources]] entry is required".to_string(),
         ));
     }
+    // Both TOML and env sources ignore empty strings so neither can shadow the other with "".
+    cfg.upstream.api_key = resolve_api_key(
+        cfg.upstream.api_key.take().filter(|s| !s.is_empty()),
+        std::env::var("DMTR_API_KEY").ok().filter(|s| !s.is_empty()),
+    );
     Ok(cfg)
 }
 
 #[cfg(test)]
 mod tests {
+    // Safety note: the `resolve_api_key` tests below are env-safe because they
+    // call the pure function directly without touching `std::env`. Any future
+    // test that exercises `config::load` with `DMTR_API_KEY` set must serialize
+    // env access (e.g. via a mutex) to avoid races with parallel test threads.
     use super::*;
 
     const MINIMAL_TOML: &str = r#"
@@ -129,6 +148,37 @@ name = "test"
 tii_path = "/tmp/test.tii"
 profile = "mainnet"
 "#;
+
+    #[test]
+    fn resolve_api_key_uses_env_when_toml_absent() {
+        let result = resolve_api_key(None, Some("env-key".to_string()));
+        assert_eq!(result, Some("env-key".to_string()));
+    }
+
+    #[test]
+    fn resolve_api_key_toml_wins_when_both_present() {
+        let result = resolve_api_key(
+            Some("toml-key".to_string()),
+            Some("env-key".to_string()),
+        );
+        assert_eq!(result, Some("toml-key".to_string()));
+    }
+
+    #[test]
+    fn resolve_api_key_none_when_both_absent() {
+        let result = resolve_api_key(None, None);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn resolve_api_key_empty_toml_falls_back_to_env() {
+        // An explicit api_key = "" in TOML must not shadow a real env value.
+        let result = resolve_api_key(
+            Some("".to_string()).filter(|s| !s.is_empty()),
+            Some("env-key".to_string()),
+        );
+        assert_eq!(result, Some("env-key".to_string()));
+    }
 
     #[test]
     fn matching_defaults_to_all_when_block_omitted() {

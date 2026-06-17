@@ -1,0 +1,15 @@
+# Build artifacts — large; exclude to keep context small and fast.
+target/
+
+# Git metadata — not needed in the build context.
+.git/
+
+# Local runtime files — secrets and state must not enter the image.
+*.db
+*.db-shm
+*.db-wal
+tracker.toml
+
+# Development / editor noise.
+.env
+.env.*

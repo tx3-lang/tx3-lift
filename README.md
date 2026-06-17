@@ -41,6 +41,8 @@ mode = "all"   # default — keep every candidate, let downstream filter by rank
 # mode = "best" — keep only rank-1 rows per transaction
 ```
 
+The tracker's `[upstream]` block accepts an optional `api_key` field for endpoints that require authentication. As an alternative, set the `DMTR_API_KEY` environment variable — the TOML value takes precedence when both are provided, and an empty `DMTR_API_KEY=""` is ignored.
+
 ## Crates
 
 - [`tx3-lift`](./crates/tx3-lift) — chain-generic core: `Fingerprint`, `PayloadSummary`, `Matcher` / `Lifter` traits, `Lifted`, `specialize`.
