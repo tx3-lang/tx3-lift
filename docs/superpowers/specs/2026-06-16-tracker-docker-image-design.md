@@ -13,6 +13,13 @@
 > `<repo>-<component>`), tagged with the **git SHA only** (no semver / `latest`),
 > and the publish workflow runs on `workflow_dispatch`. Inline references below to
 > `ghcr.io/tx3-lang/tracker` and to semver/`latest` tags predate this alignment.
+>
+> The release **binary** is built and published by **cargo-dist**
+> (`dist-workspace.toml` + a generated `.github/workflows/release.yml`, triggered by
+> version tags) for `x86_64`/`aarch64-unknown-linux-gnu` and `aarch64-apple-darwin`,
+> with **cargo-release** (`release.toml`) for the version bump + tag — replacing the
+> earlier static-musl / `taiki-e` design in §4.3 below. Targets are gnu (matching the
+> Docker image and the txpipe convention), not musl.
 
 ## 1. Context
 

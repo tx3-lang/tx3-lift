@@ -1,0 +1,8 @@
+# cargo-release config (https://github.com/crate-ci/cargo-release).
+# Version-bump + tag ergonomics; cargo-dist's release workflow builds and
+# publishes the binaries when the resulting tag is pushed.
+push = false
+publish = false
+shared-version = true
+tag-name = "v{{version}}"
+pre-release-commit-message = "release: v{{version}}"
