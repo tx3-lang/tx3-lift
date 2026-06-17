@@ -8,6 +8,12 @@
 
 ---
 
+> **Convention update (post-implementation):** to match the txpipe GHCR pattern,
+> the published image is `ghcr.io/tx3-lang/tx3-lift-tracker` (named
+> `<repo>-<component>`), tagged with the **git SHA only** (no semver / `latest`),
+> and the publish workflow runs on `workflow_dispatch`. Inline references below to
+> `ghcr.io/tx3-lang/tracker` and to semver/`latest` tags predate this alignment.
+
 ## 1. Context
 
 ### 1.1 What we have
