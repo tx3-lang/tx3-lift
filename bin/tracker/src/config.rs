@@ -157,10 +157,7 @@ profile = "mainnet"
 
     #[test]
     fn resolve_api_key_toml_wins_when_both_present() {
-        let result = resolve_api_key(
-            Some("toml-key".to_string()),
-            Some("env-key".to_string()),
-        );
+        let result = resolve_api_key(Some("toml-key".to_string()), Some("env-key".to_string()));
         assert_eq!(result, Some("toml-key".to_string()));
     }
 
