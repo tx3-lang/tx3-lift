@@ -6,3 +6,4 @@ publish = false
 shared-version = true
 tag-name = "v{{version}}"
 pre-release-commit-message = "release: v{{version}}"
+pre-release-hook = ["git", "cliff", "-o", "CHANGELOG.md", "--latest"]
